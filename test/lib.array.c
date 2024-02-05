@@ -4,7 +4,7 @@
 
 UTEST(array, test_add_basic)
 {
-    int *arr = 0;
+    dynarray int *arr = 0;
     array_init(arr, vd_memory_get_system_allocator());
 
     array_add(arr, 1);

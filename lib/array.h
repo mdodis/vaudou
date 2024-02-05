@@ -2,6 +2,7 @@
 #define VD_ARRAY_H
 #include "common.h"
 #include "allocator.h"
+#include <string.h>
 
 typedef struct {
     size_t        len;
@@ -16,6 +17,13 @@ typedef struct {
 #define VD_ARRAY_CAP(a)             ((a) ? VD_ARRAY_HEADER(a)->cap : 0)
 #define VD_ARRAY_ALC(a)             ((a) ? VD_ARRAY_HEADER(a)->allocator : 0)
 #define VD_ARRAY_GROW(a, b, c)      ((a) = vd_array_grow((a), sizeof(*(a)), (b), (c), VD_ARRAY_ALC(a)))
+#define VD_ARRAY_POP(a)             (VD_ARRAY_HEADER(a)->len--, (a)[VD_ARRAY_HEADER(a)->len])
+#define VD_ARRAY_LAST(a)            ((a)[VD_ARRAY_HEADER(a)->len - 1])
+#define VD_ARRAY_DEL(a, i)          VD_ARRAY_DELN(a, i, 1)
+#define VD_ARRAY_DELSWAP(a, i)      ((a)[i] = VD_ARRAY_LAST(a), VD_ARRAY_HEADER(a)->len -= 1)
+#define VD_ARRAY_DELN(a, i, n)      \
+    (memmove(&(a)[i], &(a)[i + n], sizeof(*(a)) * (VD_ARRAY_HEADER(a)->len - (n) - (i))), \
+    VD_ARRAY_HEADER(a)->len -= (n))
 #define VD_ARRAY_CHECK_GROW(a, n)   \
     ((!(a) || VD_ARRAY_HEADER(a)->len + (n) > VD_ARRAY_HEADER(a)->cap) \
     ? (VD_ARRAY_GROW(a, n, 0), 0) : 0)
@@ -59,12 +67,19 @@ VD_INLINE void *vd_array_grow(
     return b;
 }
 
+#define VD_ARRAY
+
 #if VD_ABBREVIATIONS
-#define array_init   VD_ARRAY_INIT
-#define array_add    VD_ARRAY_ADD
-#define array_len    VD_ARRAY_LEN
-#define array_cap    VD_ARRAY_CAP
-#define array_alc    VD_ARRAY_ALC
+#define array_init      VD_ARRAY_INIT
+#define array_add       VD_ARRAY_ADD
+#define array_len       VD_ARRAY_LEN
+#define array_cap       VD_ARRAY_CAP
+#define array_pop       VD_ARRAY_POP
+#define array_last      VD_ARRAY_LAST
+#define array_delswap   VD_ARRAY_DELSWAP
+#define array_del       VD_ARRAY_DEL
+#define array_deln      VD_ARRAY_DELN
+#define dynarray        VD_ARRAY
 #endif
 
 #endif

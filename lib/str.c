@@ -17,3 +17,12 @@ VD_str vd_str_from_cstr(const char *in_cstr)
     result.data = (char *)in_cstr;
     return result;
 }
+
+bool vd_str_eq(VD_str a, VD_str b)
+{
+    if (a.len != b.len) {
+        return false;
+    }
+
+    return memcmp(a.data, b.data, a.len) == 0;
+}

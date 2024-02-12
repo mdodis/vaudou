@@ -20,7 +20,9 @@ static bool check_key(VD_str check, VD_BinPrefix* against)
         return false;
     }
 
-    return memcmp(against->key_rest, check.data + prefix_len, second_check_len) == 0;
+    return check.len < prefix_len 
+        ? true
+        : (memcmp(against->key_rest, check.data + prefix_len, second_check_len) == 0);
 }
 
 static void copy_key(str key, VD_BinPrefix *bin)
@@ -72,16 +74,19 @@ VD_BinPrefix *vd__strmap_get_bin(void *map, VD_str key, VD__GetBinFlags op)
 
     if (existing_bin->used) {
         bool found = false;
-        while (existing_bin->next != 0) {
+
+        if (check_key(key, existing_bin)) {
+            found = true;
+        }
+
+        while (!found && (existing_bin->next != 0)) {
+            existing_bin = existing_bin->next;
 
             if (check_key(key, existing_bin)) {
                 found = true;
-                break;
             }
-
-            existing_bin = existing_bin->next;
         }
-
+        
         if (found) {
             if (op & VD__GET_BIN_FLAGS_SET_UNUSED) {
                 existing_bin->used = false;
@@ -100,6 +105,13 @@ VD_BinPrefix *vd__strmap_get_bin(void *map, VD_str key, VD__GetBinFlags op)
 
     if (!(op & VD__GET_BIN_FLAGS_CREATE)) {
         return 0;
+    }
+
+    if (!existing_bin->used) {
+        copy_key(key, existing_bin);
+        existing_bin->used = true;
+        existing_bin->next = 0;
+        return existing_bin;
     }
 
     u32 cursor = VD_STRMAP_HEADER(map)->cap_total;

@@ -20,9 +20,9 @@ _internal VD_PROC_ALLOC(sys_alloc)
     _unused(c);
 
     if (newsize == 0) {
-        free(ptr);
+        free((void*)ptr);
         return 0;
     } else {
-        return realloc(ptr, newsize);
+        return (umm)realloc((void*)ptr, newsize);
     }
 }

@@ -71,8 +71,10 @@ typedef int16_t       i16;
 typedef int32_t       i32;
 typedef int64_t       i64;
 typedef unsigned char uchar;
-typedef u8           *umm;
+typedef uintptr_t     umm;
 typedef const char   *cstr;
+typedef float         f32;
+typedef double        f64;
 
 #define VD_FALSE 0
 #define VD_TRUE  1

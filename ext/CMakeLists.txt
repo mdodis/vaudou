@@ -9,3 +9,4 @@ FetchContent_Declare(
 
 # In Source Libraries
 add_subdirectory("utest")
+add_subdirectory("luajit")

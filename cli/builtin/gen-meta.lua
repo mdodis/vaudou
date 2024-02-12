@@ -1,0 +1,1 @@
+decl_cli {"meta-compiler", priority = 10 }

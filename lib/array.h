@@ -51,7 +51,7 @@ VD_INLINE void *vd_array_grow(
         mincap = 4;
     }
 
-    void *b = vd_realloc(
+    void *b = (void*)vd_realloc(
         allocator, 
         (umm)(a ? VD_ARRAY_HEADER(a) : 0),
         VD_ARRAY_CAP(a) == 0 ? 0 : tsize * VD_ARRAY_CAP(a) + sizeof(VD_ArrayHeader),

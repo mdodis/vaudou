@@ -78,11 +78,36 @@ VD_INLINE VD_bool vd__strmap_get(void *map, VD_str key, void *value)
 #define VD_STRMAP 
 
 #if VD_ABBREVIATIONS
-#define strmap      VD_STRMAP
-#define strmap_init VD_STRMAP_INIT
-#define strmap_set  VD_STRMAP_SET
-#define strmap_get  VD_STRMAP_GET
-#define strmap_del  VD_STRMAP_DEL
+#define strmap              VD_STRMAP
+/**
+ * @brief Initialize a strmap.
+ * @param m The map. Must be a pointer (e.g int *map).
+ * @param a The allocator.
+ */
+#define strmap_init(m,a)    VD_STRMAP_INIT(m,a)
+
+/**
+ * @brief Set a value in the map.
+ * @param m The map.
+ * @param k The key.
+ * @param v The value. Must be a pointer (e.g &value).
+ */
+#define strmap_set(m,k,v)   VD_STRMAP_SET(m,k,v)
+
+/**
+ * @brief Set a value in the map.
+ * @param m The map.
+ * @param k The key.
+ * @param v The value. Must be a pointer (e.g &value).
+ */
+#define strmap_get(m,k,v)   VD_STRMAP_GET(m,k,v)
+
+/**
+ * @brief Delete a specific key from the map.
+ * @param m The map.
+ * @param k The key.
+ */
+#define strmap_del(m,k)     VD_STRMAP_DEL(m,k)
 #endif
 
 #endif

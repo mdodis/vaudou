@@ -23,7 +23,12 @@ typedef struct _tagVD_FmtStr {
     unsigned int  len;
 } VD_FmtStr;
 
-void vd_fmt_set_lut(VD_FmtStr *matchtable, VD_FmtProcFmt **procs, size_t n);
+typedef struct _tagVD_FmtTable {
+    VD_FmtStr       s;
+    VD_FmtProcFmt  *p;
+} VD_FmtTable;
+
+void vd_fmt_set_lut(VD_FmtTable *lut, size_t n);
 size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args);
 
 static inline size_t vd_fmt_snfmt(char *out, size_t n, const char *fmt, ...)
@@ -55,38 +60,37 @@ static inline void vd_fmt_printf(const char *fmt, ...)
 
 #define _VD_FMT_LIT(s) (VD_FmtStr) {s, sizeof(s) - 1}
 
-static VD_FmtStr _vd_fmt_def_matchtable[] = {
-    _VD_FMT_LIT("i32"),
-    _VD_FMT_LIT("i64"),
-    _VD_FMT_LIT("u32"),
-    _VD_FMT_LIT("u64"),
-    _VD_FMT_LIT("f32"),
-    _VD_FMT_LIT("f64"),
-    _VD_FMT_LIT("cstr"),
-    _VD_FMT_LIT("str"),
-    _VD_FMT_LIT("ptr"),
-    _VD_FMT_LIT("ptrdiff"),
-    _VD_FMT_LIT("size"),
-    _VD_FMT_LIT("usize"),
-    _VD_FMT_LIT("bool"),
-    _VD_FMT_LIT("char"),
-    _VD_FMT_LIT("void"),
+static VD_FMT_PROC_FMT(_vd_fmt_def_i32);
+
+static VD_FmtTable _VD_Fmt_Def_Lut[] = {
+    (VD_FmtTable) { _VD_FMT_LIT("i32"),     _vd_fmt_def_i32 },
+    (VD_FmtTable) { _VD_FMT_LIT("i64"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("u32"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("u64"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("f32"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("f64"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("cstr"),    NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("str"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("ptr"),     NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("ptrdiff"), NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("size"),    NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("usize"),   NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("bool"),    NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("char"),    NULL },
+    (VD_FmtTable) { _VD_FMT_LIT("void"),    NULL },
 };
 
 static struct {
-    VD_FmtStr       *matchtable;
-    VD_FmtProcFmt  **procs;
-    size_t n;
+    VD_FmtTable *lut;
+    size_t       n;
 } _vd_g = {
-    _vd_fmt_def_matchtable,
-    NULL,
-    sizeof(_vd_fmt_def_matchtable) / sizeof(_vd_fmt_def_matchtable[0]),
+    _VD_Fmt_Def_Lut,
+    sizeof(_VD_Fmt_Def_Lut) / sizeof(_VD_Fmt_Def_Lut[0]),
 };
 
-void vd_fmt_set_lut(VD_FmtStr *matchtable, VD_FmtProcFmt **procs, size_t n)
+void vd_fmt_set_lut(VD_FmtTable *lut, size_t n)
 {
-    _vd_g.matchtable = matchtable;
-    _vd_g.procs = procs;
+    _vd_g.lut = lut;
     _vd_g.n = n;
 }
 
@@ -122,8 +126,8 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
             size_t i = 0;
             int found = 0;
             while (i < _vd_g.n) {
-                if ((_vd_g.matchtable[i].len == cl) &&
-                    (strncmp(_vd_g.matchtable[i].dat, beg, cl) == 0)) 
+                if ((_vd_g.lut[i].s.len == cl) &&
+                    (strncmp(_vd_g.lut[i].s.dat, beg, cl) == 0)) 
                 {
                     size_t available = n;
                     if (n < nwrite) {
@@ -132,7 +136,7 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
                         available = n - nwrite;
                     }
 
-                    nwrite += _vd_g.procs[i](out + nwrite, available, args);
+                    nwrite += _vd_g.lut[i].p(out + nwrite, available, args);
                     found = 1;
                     break;
                 }
@@ -155,5 +159,10 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
     return nwrite;
 }
 
+static VD_FMT_PROC_FMT(_vd_fmt_def_i32)
+{
+    int32_t i = va_arg(a, int32_t);
+    return snprintf(out, n, "%d", i);
+}
 
 #endif

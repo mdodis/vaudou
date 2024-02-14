@@ -6,4 +6,4 @@ target_link_libraries(vdtestrunner vdlib utest)
 add_test(NAME vdtest COMMAND vdtestrunner)
 set_property(
     TEST vdtest
-    PROPERTY FAIL_REGULAR_EXPRESSION "[  FAILED  ]")
+    PROPERTY FAIL_REGULAR_EXPRESSION "^\[  FAILED  \]$")

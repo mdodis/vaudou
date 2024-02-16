@@ -41,12 +41,19 @@ VD_INLINE void vd_arena_reset(VD_Arena *arena)
     arena->begin = arena->data;
 }
 
+VD_INLINE void vd_arena_free(VD_Arena *arena)
+{
+    vd_free(arena->allocator, arena->data, arena->end - arena->data);
+}
+
 #if VD_ABBREVIATIONS
 #define Arena VD_Arena
 #define arena_new vd_arena_new
 #define arena_alloc VD_ARENA_ALLOC
 #define arena_alloc_array VD_ARENA_ALLOC_ARRAY
 #define arena_alloc_struct VD_ARENA_ALLOC_STRUCT
+#define arena_reset vd_arena_reset
+#define arena_free vd_arena_free
 #endif
 
 #endif

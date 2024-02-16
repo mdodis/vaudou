@@ -11,9 +11,9 @@ UTEST(array, test_add_basic)
     array_add(arr, 2);
     array_add(arr, 3);
 
-    ASSERT_EQ(arr[0], 1);
-    ASSERT_EQ(arr[1], 2);
-    ASSERT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
 }
 
 UTEST(array, test_add_grow)
@@ -28,6 +28,6 @@ UTEST(array, test_add_grow)
 
     for (int i = 0; i < 100; i++)
     {
-        ASSERT_EQ(arr[i], i);
+        EXPECT_EQ(arr[i], i);
     }
 }

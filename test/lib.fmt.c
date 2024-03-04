@@ -26,3 +26,11 @@ UTEST(FMT, IntegerTypes)
 
     arena_free(&a);
 }
+
+UTEST(FMT, StringSlices)
+{
+    Arena a = arena_new(1024, vd_memory_get_system_allocator());
+    str s = vd_snfmt(&a, "%{stru32}", str_lit("Hello"));
+    EXPECT_TRUE(vd_str_eq(s, str_lit("Hello")));
+    arena_free(&a);
+}

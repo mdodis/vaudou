@@ -1,10 +1,47 @@
-// vd_fmt.h - A simple string formatting library
+// vd_fmt.h - A string formatting library
+//
+// -------------------------------------------------------------------------------------------------
+// MIT License
+// 
+// Copyright (c) 2024 Michael Dodis
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 //
 // STRING FORMATTING
 // - vd_fmt_vsnfmt(out, n, "The number is %{i32}", 12)
 //     - Prints "The number is 12"
 // - vd_fmt_vsnfmt(out, n, "The number is %{what}")
 //     - Throws error
+//
+// BUILTINS
+// - %{i8}             int8_t
+// - %{i16}            int16_t
+// - %{i32}            int32_t
+// - %{i64}            int64_t
+// - %{u8}             uint8_t
+// - %{u16}            uint16_t
+// - %{u32}            uint32_t
+// - %{u64}            uint64_t
+// - %{f32}            float
+// - %{f64}            double
+// - %{str(i,u)<j>}    A string slice of the type struct { char *data; (i,u)<j> len; };
+//
 #if defined(__INTELLISENSE__) || defined(__CLANGD__)
 #define VD_FMT_IMPLEMENTATION
 #endif
@@ -42,26 +79,36 @@ static inline size_t vd_fmt_snfmt(char *out, size_t n, const char *fmt, ...)
     return ret;
 }
 
-static inline void vd_fmt_printf(const char *fmt, ...)
+static inline void vd_fmt_vfprintf(FILE* f, const char *fmt, va_list args)
 {
-    static char buf[4096];
-
-    va_list args;
-    va_start(args, fmt);
+    char buf[4096];
     size_t ret = vd_fmt_vsnfmt(buf, sizeof(buf), fmt, args);
-    va_end(args);
-
     if (ret > 0) {
-        fwrite(buf, 1, ret, stdout);
+        fwrite(buf, 1, ret, f);
     }
 }
 
-#endif
+static inline void vd_fmt_fprintf(FILE* f, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vd_fmt_vfprintf(f, fmt, args);
+    va_end(args);
+}
+
+static inline void vd_fmt_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vd_fmt_vfprintf(stdout, fmt, args);
+    va_end(args);
+}
 
 #ifdef VD_FMT_IMPLEMENTATION
 
 #define VD_FMT_LIT(s) (VD_FmtStr) {s, sizeof(s) - 1}
 
+/* ----INTEGERS---------------------------------------------------------------------------------- */
 #define VD_FMT_NUM_DIGITS(x) _Generic((x),         \
     uint64_t: sizeof("18446744073709551616") - 1,  \
     uint32_t: sizeof("4294967295") - 1,            \
@@ -135,6 +182,51 @@ VD_FMT__INT_CONVERSION_PROCS
 
 #undef VD_FMT__X
 
+/* ----STRING SLICES----------------------------------------------------------------------------- */
+#define VD_FMT__STRING_SLICE_PROC_NAME(lentype) VD_FMT__string_slice_to_str##lentype
+#define VD_FMT__STRING_SLICE_PROC_SIG(lentype) \
+    VD_FMT_PROC_FMT(VD_FMT__STRING_SLICE_PROC_NAME(lentype))
+
+#define VD_FMT__STRING_SLICE_PROCS \
+    VD_FMT__X(u32, uint32_t)       \
+    VD_FMT__X(u64, uint64_t)       \
+
+#define VD_FMT__X(lentype, argcast)                                       \
+    static VD_FMT__STRING_SLICE_PROC_SIG(lentype)                         \
+    {                                                                     \
+        struct _vd_fmt_str_slice { char *data; argcast len; };            \
+        struct _vd_fmt_str_slice v = va_arg(a, struct _vd_fmt_str_slice); \
+        if (n < v.len) return v.len;                                      \
+        memcpy(out, v.data, v.len);                                       \
+        return v.len;                                                     \
+    }                                                                     \
+
+VD_FMT__STRING_SLICE_PROCS
+
+#undef VD_FMT__X
+
+/* ----FLOATING POINT---------------------------------------------------------------------------- */
+static VD_FMT_PROC_FMT(vd_fmt__f32_to_str)
+{
+    float f = va_arg(a, float);
+    return snprintf(out, n, "%f", f);
+}
+
+static VD_FMT_PROC_FMT(vd_fmt__f64_to_str)
+{
+    double f = va_arg(a, double);
+    return snprintf(out, n, "%f", f);
+}
+
+static VD_FMT_PROC_FMT(vd_fmt__cstr)
+{
+    const char *s = va_arg(a, const char*);
+    size_t len = strlen(s);
+    if (n < len) return len;
+    memcpy(out, s, len);
+    return len;
+}
+
 static VD_FmtTable _VD_Fmt_Def_Lut[] = {
     (VD_FmtTable) { VD_FMT_LIT("i8"),      VD_FMT__INT_CONVERSION_PROC_NAME(int8_t)   },
     (VD_FmtTable) { VD_FMT_LIT("i16"),     VD_FMT__INT_CONVERSION_PROC_NAME(int16_t)  },
@@ -144,10 +236,11 @@ static VD_FmtTable _VD_Fmt_Def_Lut[] = {
     (VD_FmtTable) { VD_FMT_LIT("u16"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint16_t) },
     (VD_FmtTable) { VD_FMT_LIT("u32"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint32_t) },
     (VD_FmtTable) { VD_FMT_LIT("u64"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint64_t) },
-    (VD_FmtTable) { VD_FMT_LIT("f32"),     NULL },
-    (VD_FmtTable) { VD_FMT_LIT("f64"),     NULL },
-    (VD_FmtTable) { VD_FMT_LIT("cstr"),    NULL },
-    (VD_FmtTable) { VD_FMT_LIT("str"),     NULL },
+    (VD_FmtTable) { VD_FMT_LIT("f32"),     vd_fmt__f32_to_str },
+    (VD_FmtTable) { VD_FMT_LIT("f64"),     vd_fmt__f64_to_str },
+    (VD_FmtTable) { VD_FMT_LIT("stru32"),  VD_FMT__STRING_SLICE_PROC_NAME(u32) },
+    (VD_FmtTable) { VD_FMT_LIT("stru64"),  VD_FMT__STRING_SLICE_PROC_NAME(u64) },
+    (VD_FmtTable) { VD_FMT_LIT("cstr"),    vd_fmt__cstr },
     (VD_FmtTable) { VD_FMT_LIT("ptr"),     NULL },
     (VD_FmtTable) { VD_FMT_LIT("ptrdiff"), NULL },
     (VD_FmtTable) { VD_FMT_LIT("size"),    NULL },
@@ -244,4 +337,5 @@ static VD_FMT_PROC_FMT(_vd_fmt_def_i32)
     return snprintf(out, n, "%d", i);
 }
 
+#endif
 #endif

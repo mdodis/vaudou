@@ -1,15 +1,14 @@
+#define VD_SYSUTIL_IMPLEMENTATION
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "sys.h"
-
-#if VD_PLATFORM_MACOS
-#include <mach-o/dyld.h>
-#endif
+#include "vd_sysutil.h"
 
 VD_str vd_get_exec_path(VD_Arena *arena)
 {
     VD_str result = {0};
-    _NSGetExecutablePath(0, &result.len);
+    vd_sysutil_get_executable_path(0, &result.len);
     result.data = arena_alloc(arena, result.len);
-    _NSGetExecutablePath((char*)result.data, &result.len);
+    vd_sysutil_get_executable_path((char*)result.data, &result.len);
+    result.len -= 1;
     return result;
 }

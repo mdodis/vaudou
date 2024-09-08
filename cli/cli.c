@@ -1,3 +1,4 @@
+#define VD_NET_IMPLEMENTATION
 #define VD_INTERNAL_SOURCE_FILE 1
 #include <assert.h>
 #include <stdio.h>
@@ -7,7 +8,7 @@
 #include "sys.h"
 #include "fmt.h"
 #include "array.h"
-
+#include "vd_net.h"
 static struct {
     lua_State     *l;
     str            exec_path;
@@ -15,9 +16,29 @@ static struct {
     dynarray str  *builtins;
 } G;
 
+int l_c_parse(lua_State *l)
+{
+    lua_pushnumber(G.l, 1);
+	printf("OMW\n");
+    return 1;
+}
+
+int l_net_ftp(lua_State *l)
+{
+    if (!lua_isnumber(l, 1)) {
+        return 0;
+    }
+    int port_num = lua_tointeger(l, 1);
+
+    vd_net_ftp(& (VD_NetFtp) {
+        .port = port_num,
+    });
+    return 0;
+}
+
 int main(int argc, char const *argv[])
 {
-    G.a = arena_new(4096, vd_memory_get_system_allocator());
+    G.a = arena_new(4096*2, vd_memory_get_system_allocator());
     G.l = luaL_newstate();
     luaL_openlibs(G.l);
 
@@ -53,12 +74,26 @@ int main(int argc, char const *argv[])
         vd_fmt_printf("vdcli <program>\n");
 
         for (int i = 0; i < array_len(G.builtins); ++i) {
-            vd_fmt_printf("\t%{stru32}\n", G.builtins[i]);
+            vd_fmt_printf("\t%{stru32}\n", str_path_last_part(G.builtins[i]));
         }
         return 1;
     }
 
-    str program = str_from_cstr(argv[2]);
+    str program = str_from_cstr(argv[1]);
+
+    VD_str a = vd_snfmt(&G.a, "%{stru32}/%{stru32}\0", builtins_path, program);
+    vd_fmt_printf("%{stru32}\n", a);
+
+    lua_pushcfunction(G.l, l_c_parse);
+    lua_setglobal(G.l, "l_c_parse");
+
+    lua_pushcfunction(G.l, l_net_ftp);
+    lua_setglobal(G.l, "l_net_ftp");
+    if (luaL_dofile(G.l, a.data)) {
+		vd_fmt_printf("ERROR\n");
+		vd_fmt_printf("LUA: %{cstr}\n", lua_tostring(G.l, -1));
+	}
+
 
     lua_close(G.l);
     return 0;

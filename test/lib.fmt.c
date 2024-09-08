@@ -34,3 +34,11 @@ UTEST(FMT, StringSlices)
     EXPECT_TRUE(vd_str_eq(s, str_lit("Hello")));
     arena_free(&a);
 }
+
+UTEST(FMT, MultipleStringSlices)
+{
+    Arena a = arena_new(1024, vd_memory_get_system_allocator());
+    str s = vd_snfmt(&a, "%{stru32} %{stru32}", str_lit("Hello"), str_lit("World"));
+    EXPECT_TRUE(vd_str_eq(s, str_lit("Hello World")));
+    arena_free(&a);
+}

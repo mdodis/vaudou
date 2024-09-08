@@ -53,7 +53,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define VD_FMT_PROC_FMT(name) size_t name(char *out, size_t n, va_list a)
+#define VD_FMT_PROC_FMT(name) size_t name(char *out, size_t n, va_list *a)
 typedef VD_FMT_PROC_FMT(VD_FmtProcFmt);
 
 typedef struct _tagVD_FmtStr {
@@ -150,7 +150,7 @@ static const char VD_FMT__Digits_Lut[201] =
         const size_t length = maxdigits;                                      \
         size_t next = length - 1;                                             \
         if (n < next) return length;                                          \
-        intname v = (intname)va_arg(a, argcast);                              \
+        intname v = (intname)va_arg(*a, argcast);                             \
         int sgn = 0;                                                          \
         if (issigned && (v < 0)) {                                            \
             sgn = 1;                                                          \
@@ -191,15 +191,15 @@ VD_FMT__INT_CONVERSION_PROCS
     VD_FMT__X(u32, uint32_t)       \
     VD_FMT__X(u64, uint64_t)       \
 
-#define VD_FMT__X(lentype, argcast)                                       \
-    static VD_FMT__STRING_SLICE_PROC_SIG(lentype)                         \
-    {                                                                     \
-        struct _vd_fmt_str_slice { char *data; argcast len; };            \
-        struct _vd_fmt_str_slice v = va_arg(a, struct _vd_fmt_str_slice); \
-        if (n < v.len) return v.len;                                      \
-        memcpy(out, v.data, v.len);                                       \
-        return v.len;                                                     \
-    }                                                                     \
+#define VD_FMT__X(lentype, argcast)                                        \
+    static VD_FMT__STRING_SLICE_PROC_SIG(lentype)                          \
+    {                                                                      \
+        struct _vd_fmt_str_slice { char *data; argcast len; };             \
+        struct _vd_fmt_str_slice v = va_arg(*a, struct _vd_fmt_str_slice); \
+        if (n < v.len) return v.len;                                       \
+        memcpy(out, v.data, v.len);                                        \
+        return v.len;                                                      \
+    }                                                                      \
 
 VD_FMT__STRING_SLICE_PROCS
 
@@ -208,19 +208,19 @@ VD_FMT__STRING_SLICE_PROCS
 /* ----FLOATING POINT---------------------------------------------------------------------------- */
 static VD_FMT_PROC_FMT(vd_fmt__f32_to_str)
 {
-    float f = va_arg(a, float);
+    float f = va_arg(*a, float);
     return snprintf(out, n, "%f", f);
 }
 
 static VD_FMT_PROC_FMT(vd_fmt__f64_to_str)
 {
-    double f = va_arg(a, double);
+    double f = va_arg(*a, double);
     return snprintf(out, n, "%f", f);
 }
 
 static VD_FMT_PROC_FMT(vd_fmt__cstr)
 {
-    const char *s = va_arg(a, const char*);
+    const char *s = va_arg(*a, const char*);
     size_t len = strlen(s);
     if (n < len) return len;
     memcpy(out, s, len);
@@ -306,7 +306,7 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
                         available = n - nwrite;
                     }
 
-                    nwrite += _vd_g.lut[i].p(out + nwrite, available, args);
+                    nwrite += _vd_g.lut[i].p(out + nwrite, available, &args);
                     found = 1;
                     break;
                 }
@@ -329,12 +329,6 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
     }
 
     return nwrite;
-}
-
-static VD_FMT_PROC_FMT(_vd_fmt_def_i32)
-{
-    int32_t i = va_arg(a, int32_t);
-    return snprintf(out, n, "%d", i);
 }
 
 #endif

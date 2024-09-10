@@ -1,4 +1,3 @@
-#define VD_NET_IMPLEMENTATION
 #define VD_INTERNAL_SOURCE_FILE 1
 #include <assert.h>
 #include <stdio.h>
@@ -8,7 +7,6 @@
 #include "sys.h"
 #include "fmt.h"
 #include "array.h"
-#include "vd_net.h"
 static struct {
     lua_State     *l;
     str            exec_path;
@@ -23,19 +21,6 @@ int l_c_parse(lua_State *l)
     return 1;
 }
 
-int l_net_ftp(lua_State *l)
-{
-    if (!lua_isnumber(l, 1)) {
-        return 0;
-    }
-    int port_num = lua_tointeger(l, 1);
-
-    vd_net_ftp(& (VD_NetFtp) {
-        .port = port_num,
-    });
-    return 0;
-}
-
 int main(int argc, char const *argv[])
 {
     G.a = arena_new(4096*2, vd_memory_get_system_allocator());
@@ -43,11 +28,11 @@ int main(int argc, char const *argv[])
     luaL_openlibs(G.l);
 
     G.exec_path = vd_get_exec_path(&G.a);
-    vd_fmt_printf("Executable path: %{stru32}\n", G.exec_path);
+    vd_fmt_printf("Executable path: %{pathu32}\n", G.exec_path);
 
     str builtins_path = vd_snfmt(
         &G.a, 
-        "%{stru32}/builtin/\0", 
+        "%{pathu32}/builtin/%{null}", 
         vd_str_chop_right_last_of(G.exec_path, '/'));
     vd_fmt_printf("Builtins path: %{stru32}\n", builtins_path);
     
@@ -87,8 +72,6 @@ int main(int argc, char const *argv[])
     lua_pushcfunction(G.l, l_c_parse);
     lua_setglobal(G.l, "l_c_parse");
 
-    lua_pushcfunction(G.l, l_net_ftp);
-    lua_setglobal(G.l, "l_net_ftp");
     if (luaL_dofile(G.l, a.data)) {
 		vd_fmt_printf("ERROR\n");
 		vd_fmt_printf("LUA: %{cstr}\n", lua_tostring(G.l, -1));

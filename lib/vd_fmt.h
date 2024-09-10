@@ -41,6 +41,8 @@
 // - %{f32}            float
 // - %{f64}            double
 // - %{str(i,u)<j>}    A string slice of the type struct { char *data; (i,u)<j> len; };
+// - %{pathu32}        Like %{str(i,u)<j>} but prints a unix path (replaces '\\' with '/').
+// - %{null}           Prints null terminator ('\0')
 //
 #if defined(__INTELLISENSE__) || defined(__CLANGD__)
 #define VD_FMT_IMPLEMENTATION
@@ -58,7 +60,7 @@ typedef VD_FMT_PROC_FMT(VD_FmtProcFmt);
 
 typedef struct _tagVD_FmtStr {
     char         *dat;
-    unsigned int  len;
+	unsigned int  len;         // Length of the string + 1
 } VD_FmtStr;
 
 typedef struct _tagVD_FmtTable {
@@ -106,7 +108,7 @@ static inline void vd_fmt_printf(const char *fmt, ...)
 
 #ifdef VD_FMT_IMPLEMENTATION
 
-#define VD_FMT_LIT(s) (VD_FmtStr) {s, sizeof(s) - 1}
+#define VD_FMT_LIT(s) {s, (unsigned int)sizeof(s) - 1}
 
 /* ----INTEGERS---------------------------------------------------------------------------------- */
 #define VD_FMT_NUM_DIGITS(x) _Generic((x),         \
@@ -218,6 +220,32 @@ static VD_FMT_PROC_FMT(vd_fmt__f64_to_str)
     return snprintf(out, n, "%f", f);
 }
 
+/* ----PATHS------------------------------------------------------------------------------------- */
+static VD_FMT_PROC_FMT(vd_fmt__pathu32_to_str)
+{
+    struct _vd_fmt_str_slice { char* data; uint32_t len; };
+	struct _vd_fmt_str_slice v = va_arg(*a, struct _vd_fmt_str_slice);
+	if (n < v.len) return v.len;
+
+    for (int i = 0; i < v.len; ++i) {
+        if (v.data[i] == '\\') {
+			out[i] = '/';
+        } else {
+			out[i] = v.data[i];
+        }
+    }
+    return v.len;
+}
+
+static VD_FMT_PROC_FMT(vd_fmt__null_to_str)
+{
+    if (n < 1) return 1;
+
+	out[0] = '\0';
+
+    return 1;
+}
+
 static VD_FMT_PROC_FMT(vd_fmt__cstr)
 {
     const char *s = va_arg(*a, const char*);
@@ -227,27 +255,29 @@ static VD_FMT_PROC_FMT(vd_fmt__cstr)
     return len;
 }
 
-static VD_FmtTable _VD_Fmt_Def_Lut[] = {
-    (VD_FmtTable) { VD_FMT_LIT("i8"),      VD_FMT__INT_CONVERSION_PROC_NAME(int8_t)   },
-    (VD_FmtTable) { VD_FMT_LIT("i16"),     VD_FMT__INT_CONVERSION_PROC_NAME(int16_t)  },
-    (VD_FmtTable) { VD_FMT_LIT("i32"),     VD_FMT__INT_CONVERSION_PROC_NAME(int32_t)  },
-    (VD_FmtTable) { VD_FMT_LIT("i64"),     VD_FMT__INT_CONVERSION_PROC_NAME(int64_t)  },
-    (VD_FmtTable) { VD_FMT_LIT("u8"),      VD_FMT__INT_CONVERSION_PROC_NAME(uint8_t)  },
-    (VD_FmtTable) { VD_FMT_LIT("u16"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint16_t) },
-    (VD_FmtTable) { VD_FMT_LIT("u32"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint32_t) },
-    (VD_FmtTable) { VD_FMT_LIT("u64"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint64_t) },
-    (VD_FmtTable) { VD_FMT_LIT("f32"),     vd_fmt__f32_to_str },
-    (VD_FmtTable) { VD_FMT_LIT("f64"),     vd_fmt__f64_to_str },
-    (VD_FmtTable) { VD_FMT_LIT("stru32"),  VD_FMT__STRING_SLICE_PROC_NAME(u32) },
-    (VD_FmtTable) { VD_FMT_LIT("stru64"),  VD_FMT__STRING_SLICE_PROC_NAME(u64) },
-    (VD_FmtTable) { VD_FMT_LIT("cstr"),    vd_fmt__cstr },
-    (VD_FmtTable) { VD_FMT_LIT("ptr"),     NULL },
-    (VD_FmtTable) { VD_FMT_LIT("ptrdiff"), NULL },
-    (VD_FmtTable) { VD_FMT_LIT("size"),    NULL },
-    (VD_FmtTable) { VD_FMT_LIT("usize"),   NULL },
-    (VD_FmtTable) { VD_FMT_LIT("bool"),    NULL },
-    (VD_FmtTable) { VD_FMT_LIT("char"),    NULL },
-    (VD_FmtTable) { VD_FMT_LIT("void"),    NULL },
+static const VD_FmtTable _VD_Fmt_Def_Lut[] = {
+    { VD_FMT_LIT("i8"),      VD_FMT__INT_CONVERSION_PROC_NAME(int8_t)   },
+    { VD_FMT_LIT("i16"),     VD_FMT__INT_CONVERSION_PROC_NAME(int16_t)  },
+    { VD_FMT_LIT("i32"),     VD_FMT__INT_CONVERSION_PROC_NAME(int32_t)  },
+    { VD_FMT_LIT("i64"),     VD_FMT__INT_CONVERSION_PROC_NAME(int64_t)  },
+    { VD_FMT_LIT("u8"),      VD_FMT__INT_CONVERSION_PROC_NAME(uint8_t)  },
+    { VD_FMT_LIT("u16"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint16_t) },
+    { VD_FMT_LIT("u32"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint32_t) },
+    { VD_FMT_LIT("u64"),     VD_FMT__INT_CONVERSION_PROC_NAME(uint64_t) },
+    { VD_FMT_LIT("f32"),     vd_fmt__f32_to_str },
+    { VD_FMT_LIT("f64"),     vd_fmt__f64_to_str },
+    { VD_FMT_LIT("stru32"),  VD_FMT__STRING_SLICE_PROC_NAME(u32) },
+    { VD_FMT_LIT("stru64"),  VD_FMT__STRING_SLICE_PROC_NAME(u64) },
+    { VD_FMT_LIT("cstr"),    vd_fmt__cstr },
+    { VD_FMT_LIT("ptr"),     NULL },
+    { VD_FMT_LIT("ptrdiff"), NULL },
+    { VD_FMT_LIT("size"),    NULL },
+    { VD_FMT_LIT("usize"),   NULL },
+    { VD_FMT_LIT("bool"),    NULL },
+    { VD_FMT_LIT("char"),    NULL },
+    { VD_FMT_LIT("void"),    NULL },
+    { VD_FMT_LIT("pathu32"), vd_fmt__pathu32_to_str },
+    { VD_FMT_LIT("null"),    vd_fmt__null_to_str },
 };
 
 static struct {
@@ -268,7 +298,6 @@ size_t vd_fmt_vsnfmt(char *out, size_t n, const char *fmt, va_list args)
 {
     const char *cf = fmt;
     size_t nwrite = 0;
-
     cf = fmt;
     while (*cf) {
         if (*cf != '%') {

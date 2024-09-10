@@ -72,7 +72,7 @@ typedef int32_t       i32;
 typedef int64_t       i64;
 typedef unsigned char uchar;
 typedef uintptr_t     umm;
-typedef const char   *cstr;
+typedef char         *cstr;
 typedef float         f32;
 typedef double        f64;
 

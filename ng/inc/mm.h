@@ -1,6 +1,5 @@
 #ifndef VD_MM_H
 #define VD_MM_H
-
 #include "common.h"
 #include "allocator.h"
 
@@ -23,8 +22,15 @@ typedef enum {
      * @brief Memory persists for the lifetime of the current function (single threaded).
      */
     VD_MM_FUNCTION = 3,
+
+    /**
+     *  @brief Memory persist for the lifetime of the current entity.
+     */
+    VD_MM_ENTITY = 4,
 } VD_MM_Tag;
 
-VD_bool sys_mm_init(VD_Allocator *allocator);
+typedef struct MemoryManager MemoryManager;
+
+extern void GarbageCollectTask(struct ecs_iter_t *t);
 
 #endif

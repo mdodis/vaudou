@@ -1,7 +1,12 @@
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "mm.h"
+#include "flecs.h"
 
-bool sys_mm_init(VD_Allocator *allocator)
+struct MemoryManager {
+	int a;
+};
+
+void GarbageCollectTask(ecs_iter_t *t)
 {
-    return true;
+
 }

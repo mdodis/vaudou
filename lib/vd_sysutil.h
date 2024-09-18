@@ -16,9 +16,21 @@ typedef struct _tag_vd_sysutil_file_info {
     char         name[256];
 } VD_SysUtilFileInfo;
 
+typedef struct _tag_vd_sysutil_timespec {
+#if defined(_WIN32)
+	unsigned long long value;
+#endif
+} VD_SysUtilTimespec;
+
 int vd_sysutil_get_executable_path(char *buf, unsigned int *size);
 int vd_sysutil_dir_open(const char *path, VD_SysUtilDir *dir);
 int vd_sysutil_dir_next(VD_SysUtilDir *dir, VD_SysUtilFileInfo *nfo);
+
+VD_SysUtilTimespec vd_sysutil_time_now();
+VD_SysUtilTimespec vd_sysutil_time_add(VD_SysUtilTimespec *lhs, VD_SysUtilTimespec *rhs);
+VD_SysUtilTimespec vd_sysutil_time_sub(VD_SysUtilTimespec *lhs, VD_SysUtilTimespec *rhs);
+unsigned long long vd_sysutil_time_to_ms(VD_SysUtilTimespec *s);
+float vd_sysutil_time_to_s(VD_SysUtilTimespec *s);
 
 #ifdef VD_SYSUTIL_IMPLEMENTATION
 #include <string.h>
@@ -136,6 +148,60 @@ int vd_sysutil_dir_next(VD_SysUtilDir *dir, VD_SysUtilFileInfo *nfo)
     memcpy(nfo->name, result->d_name, nfo->name_len);
     return 0;
 #endif
+}
+
+#if defined(_WIN32)
+static LARGE_INTEGER The_Counter;
+static bool _timespec_win32_has_counter = false;
+#endif
+
+static void vd_sysutil__qfrequency() {
+	if (!_timespec_win32_has_counter) {
+		QueryPerformanceFrequency(&The_Counter);
+		_timespec_win32_has_counter = true;
+	}
+}
+
+VD_SysUtilTimespec vd_sysutil_time_now()
+{
+#if defined(_WIN32)
+	VD_SysUtilTimespec result;
+	QueryPerformanceCounter((LARGE_INTEGER *)&result.value);
+	return result;
+#endif
+}
+
+VD_SysUtilTimespec vd_sysutil_time_add(VD_SysUtilTimespec *lhs, VD_SysUtilTimespec *rhs)
+{
+#if defined(_WIN32)
+	VD_SysUtilTimespec result;
+	result.value = lhs->value + rhs->value;
+	return result;
+#endif
+}
+
+VD_SysUtilTimespec vd_sysutil_time_sub(VD_SysUtilTimespec *lhs, VD_SysUtilTimespec *rhs)
+{
+#if defined(_WIN32)
+	VD_SysUtilTimespec result;
+	result.value = lhs->value - rhs->value;
+	return result;
+#endif
+}
+
+unsigned long long vd_sysutil_time_to_ms(VD_SysUtilTimespec *s)
+{
+#if defined(_WIN32)
+	vd_sysutil__qfrequency();
+	return (s->value * 1000) / The_Counter.QuadPart;
+#endif
+}
+
+float vd_sysutil_time_to_s(VD_SysUtilTimespec *s)
+{
+	unsigned long long ms = vd_sysutil_time_to_ms(s);
+
+	return (float)((double)ms / 1000.0);
 }
 
 #endif

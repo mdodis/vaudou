@@ -7,4 +7,4 @@ target_include_directories(vded PRIVATE ".")
 
 target_link_libraries(vded 
     PUBLIC 
-    vdng vdlib)
+    vdng vdlib SDL3::SDL3)

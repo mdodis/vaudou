@@ -7,5 +7,4 @@ target_include_directories(vdng
     PRIVATE src)
 
 target_link_libraries(vdng
-    PUBLIC
-    vdlib)
+    PUBLIC vdlib flecs)

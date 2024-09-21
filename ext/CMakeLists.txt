@@ -8,4 +8,5 @@ FetchContent_Declare(
 add_subdirectory("utest")
 add_subdirectory("luajit")
 add_subdirectory("flecs")
+add_subdirectory("volk")
 FetchContent_MakeAvailable(SDL3)

@@ -1,6 +1,8 @@
 #include "sdl_window_container.h"
 #include <assert.h>
 #include <stdlib.h>
+#include "common.h"
+#include "SDL3/SDL_vulkan.h"
 
 ECS_COMPONENT_DECLARE(SDLWindow);
 
@@ -75,6 +77,7 @@ static void PollSDLEvents(ecs_iter_t *it)
 				});
 
 				ecs_iter_t qit = ecs_query_iter(it->world, q);
+				int remaining_windows = qit.count;
 				while (ecs_query_next(&qit)) {
 					SDLWindow *w = ecs_field(&qit, SDLWindow, 0);
 
@@ -86,19 +89,29 @@ static void PollSDLEvents(ecs_iter_t *it)
 				}
 
 				SDL_DestroyWindow(closed_window);
-				printf("Emitting event!\n");
-				ecs_emit(it->world, &(ecs_event_desc_t) {
-					.event = AppQuitEvent,
-					.entity = ecs_id(Application),
-					.ids = &(ecs_type_t) {
-						.array = (ecs_id_t[]){ ecs_id(Application) },
-						.count = 1,
-					},
-				});
+
+				if (remaining_windows == 0) {
+					ecs_emit(it->world, &(ecs_event_desc_t) {
+						.event = AppQuitEvent,
+							.entity = ecs_id(Application),
+							.ids = &(ecs_type_t) {
+							.array = (ecs_id_t[]){ ecs_id(Application) },
+								.count = 1,
+						},
+					});
+				}
 			} break;
 		}
 	}
 }
+
+void get_required_extensions(u32 *num_extensions, const char ***extensions)
+{
+	SDL_Window *dummy_window = SDL_CreateWindow("fake", 640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+	*extensions = SDL_Vulkan_GetInstanceExtensions(num_extensions);
+	SDL_DestroyWindow(dummy_window);
+}
+
 
 void SdlImport(ecs_world_t *world)
 {

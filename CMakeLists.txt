@@ -6,11 +6,20 @@ set(CMAKE_C_STANDARD 11)
 include(FetchContent)
 include(CTest)
 
-set(VD_TRIPLET $<$<CONFIG:Debug>:debug>$<$<CONFIG:Release>:release>-$<$<PLATFORM_ID:Darwin>:osx>$<$<PLATFORM_ID:Linux>:linux>$<$<PLATFORM_ID:Windows>:win>-$<$<CONFIG:Debug>:64>$<$<CONFIG:Release>:64>)
+set(VD_TRIPLET $<$<CONFIG:Debug>:debug>$<$<CONFIG:Release>:release>-$<$<PLATFORM_ID:Darwin>:osx>$<$<PLATFORM_ID:Linux>:linux>$<$<PLATFORM_ID:Windows>:win>$<$<CONFIG:Debug>:64>$<$<CONFIG:Release>:64>)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out-${VD_TRIPLET}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out-${VD_TRIPLET}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out-${VD_TRIPLET}/lib)
+
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
+  set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+  set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
+endif()
+
 
 # Add the external libraries
 add_subdirectory("ext")

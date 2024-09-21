@@ -7,4 +7,11 @@ target_include_directories(vdng
     PRIVATE src)
 
 target_link_libraries(vdng
-    PUBLIC vdlib flecs)
+    PUBLIC vdlib flecs
+    PRIVATE volk)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(vdng
+        PRIVATE VD_ENABLE_VALIDATION_LAYERS)
+elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
+endif()

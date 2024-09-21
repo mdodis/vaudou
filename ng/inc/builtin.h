@@ -32,9 +32,7 @@ extern ECS_COMPONENT_DECLARE(Application);
 extern ECS_DECLARE(AppQuitEvent);
 
 /* ----MEMORY------------------------------------------------------------------------------------ */
-typedef struct MemoryManager MemoryManager;
 
-extern ECS_COMPONENT_DECLARE(MemoryManager);
 extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
 
 void BuiltinImport(ecs_world_t *world);

@@ -4,11 +4,15 @@
 #include "subsystem.h"
 #include "flecs.h"
 #include "builtin.h"
+#include "renderer.h"
+
+VD_Instance *Local_Instance;
 
 struct VD_Instance {
-	VD_SubsytemManager sm;
-	VD_UpdateHook on_update;
-	ecs_world_t *world;
+	VD_Renderer			    *r;
+	VD_SubsytemManager		sm;
+	VD_UpdateHook			on_update;
+	ecs_world_t				*world;
 	int should_close;
 };
 
@@ -23,8 +27,18 @@ void OnApplicationQuit(ecs_iter_t *it)
 	instance->should_close = 1;
 }
 
-void vd_instance_init(VD_Instance *instance)
+void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 {
+	Local_Instance = instance;
+	instance->r = vd_renderer_create();
+	vd_renderer_init(instance->r, &(VD_RendererInitInfo) {
+		.instance = instance,
+		.vulkan = {
+			.enabled_extensions = info->vulkan.enabled_extensions,
+			.num_enabled_extensions = info->vulkan.num_enabled_extensions,
+		},
+	});
+
 	instance->world = ecs_init();
 	ECS_IMPORT(instance->world, Builtin);
 
@@ -54,6 +68,7 @@ void vd_instance_main(VD_Instance *instance)
 void vd_instance_deinit(VD_Instance *instance)
 {
 	ecs_fini(instance->world);
+	vd_renderer_deinit(instance->r);
 }
 
 void vd_instance_destroy(VD_Instance *instance)

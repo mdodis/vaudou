@@ -3,6 +3,7 @@
 #include "common.h"
 #include "allocator.h"
 #include <string.h>
+#include "vd_atomic.h"
 
 typedef struct {
     umm           data;
@@ -34,6 +35,21 @@ VD_INLINE void *vd_arena_alloc(VD_Arena *arena, ptrdiff_t size, ptrdiff_t align)
     void *p = (void*)(arena->begin + padding);
     arena->begin += padding + size;
     return memset(p, 0, size);
+}
+
+VD_INLINE void *vd_arena_alloc_t(VD_Arena *arena, ptrdiff_t size, ptrdiff_t align)
+{
+    ptrdiff_t padding = -(uintptr_t)arena->begin & (align - 1);
+    ptrdiff_t available = arena->end - arena->begin - padding;
+
+    if (available < 0) {
+        return 0;
+    }
+
+    umm p = (umm)vd_atomic_fetch_and_add64(&arena->begin, padding + size);
+    p += padding;
+    return memset(p, 0, size);
+
 }
 
 VD_INLINE void vd_arena_reset(VD_Arena *arena)

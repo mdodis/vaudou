@@ -11,26 +11,42 @@ typedef enum {
     /**
      * @brief Memory persists for the lifetime of the application.
      */
-    VD_MM_GLOBAL = 1,
+    VD_MM_GLOBAL,
 
     /**
      * @brief Memory persists for the lifetime of the current frame.
      */
-    VD_MM_FRAME = 2,
+    VD_MM_FRAME,
 
     /**
      * @brief Memory persists for the lifetime of the current function (single threaded).
      */
-    VD_MM_FUNCTION = 3,
+    VD_MM_FUNCTION,
 
     /**
-     *  @brief Memory persist for the lifetime of the current entity.
+     *  @brief Memory persists for the lifetime of the current entity.
      */
-    VD_MM_ENTITY = 4,
+    VD_MM_ENTITY,
 } VD_MM_Tag;
 
-typedef struct MemoryManager MemoryManager;
+typedef struct VD_MM VD_MM;
+typedef struct VD_AllocationInfo VD_AllocationInfo;
 
+struct VD_AllocationInfo {
+    /* Input */
+    void        *ptr;
+    size_t       size;
+    VD_MM_Tag    tag;
+
+    /* Reserved */
+    int                  used;
+    VD_AllocationInfo   *free_next;
+    VD_AllocationInfo   *free_prev;
+};
+
+void vd_mm_init(VD_MM *mm);
+void *vd_mm_alloc(VD_MM *mm, VD_AllocationInfo *info);
+void vd_mm_deinit(VD_MM *mm);
 extern void GarbageCollectTask(struct ecs_iter_t *t);
 
 #endif

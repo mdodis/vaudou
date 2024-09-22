@@ -16,7 +16,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-
 struct VD_Renderer {
     ecs_world_t                         *world;
     VD_Instance                         *app_instance;
@@ -40,6 +39,16 @@ struct VD_Renderer {
 #if VD_VALIDATION_LAYERS
     VkDebugUtilsMessengerEXT            debug_messenger;
 #endif
+};
+
+const VkSurfaceFormatKHR Preferred_Surface_Formats[] = {
+    { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+    { VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR },
+};
+
+const VkPresentModeKHR Preferred_Present_Modes[] = {
+    VK_PRESENT_MODE_MAILBOX_KHR,
+    VK_PRESENT_MODE_FIFO_KHR,
 };
 
 const char *Validation_Layers[] = {
@@ -204,6 +213,22 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         int q_device_present_queue_family_present   = 0;
         u32 q_device_present_queue_family           = 0;
         int q_device_is_gpu                         = 0;
+        int q_device_supports_swapchain             = 0;
+
+        dynarray VkExtensionProperties *device_extensions = 0;
+        array_init(device_extensions, VD_MM_FRAME_ALLOCATOR());
+        {
+            u32 num_device_extensions = 0;
+            vkEnumerateDeviceExtensionProperties(physical_devices[i], 0, &num_device_extensions, 0);
+
+            array_addn(device_extensions, num_device_extensions);
+            vkEnumerateDeviceExtensionProperties(
+                physical_devices[i],
+                0,
+                &num_device_extensions,
+                device_extensions);
+
+        }
 
         VkPhysicalDeviceProperties2 props = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
@@ -248,6 +273,25 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             VK_VERSION_MAJOR(props.properties.apiVersion),
             VK_VERSION_MINOR(props.properties.apiVersion),
             VK_VERSION_PATCH(props.properties.apiVersion));
+
+        VD_LOG_FMT(
+            "Renderer",
+            "\tExtensions: %{u32}",
+            array_len(device_extensions));
+
+        for (int j = 0; j < array_len(device_extensions); ++j) {
+            VD_LOG_FMT(
+                "Renderer",
+                "\t\t%{cstr}(%{u32}.%{u32}.%{u32})",
+                device_extensions[j].extensionName,
+                VK_VERSION_MAJOR(device_extensions[j].specVersion),
+                VK_VERSION_MINOR(device_extensions[j].specVersion),
+                VK_VERSION_PATCH(device_extensions[j].specVersion));
+
+            if (strcmp(device_extensions[j].extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+                q_device_supports_swapchain = 1;
+            }
+        }
 
         VD_LOG_FMT(
             "Renderer",
@@ -346,6 +390,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             features13.dynamicRendering);
 
         int physical_device_satisfies_requirements = 
+            q_device_supports_swapchain &&
             q_device_graphics_queue_family_present &&
             q_device_present_queue_family_present &&
             features12.bufferDeviceAddress &&
@@ -372,26 +417,28 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     VD_LOG_FMT("Renderer", "\tGraphics Queue: %{u32}", best_device_graphics_queue_family);
     VD_LOG_FMT("Renderer", "\tPresent Queue: %{u32}", best_device_present_queue_family);
 
+    renderer->physical_device = physical_devices[best_device];
+
     // ----CREATE LOGICAL DEVICE--------------------------------------------------------------------
     VD_VK_CHECK(vkCreateDevice(
-        physical_devices[best_device],
+        renderer->physical_device,
         & (VkDeviceCreateInfo) 
         {
-            .sType                      = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            .queueCreateInfoCount       = 2,
+            .sType                          = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .queueCreateInfoCount           = 2,
             .pQueueCreateInfos = (VkDeviceQueueCreateInfo[2]) 
             {
                 {
-                    .sType              = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    .queueFamilyIndex   = best_device_graphics_queue_family,
-                    .queueCount         = 1,
-                    .pQueuePriorities   = (float[]) { 1.0f },
+                    .sType                  = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                    .queueFamilyIndex       = best_device_graphics_queue_family,
+                    .queueCount             = 1,
+                    .pQueuePriorities       = (float[]) { 1.0f },
                 },
                 {
                     .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    .queueFamilyIndex   = best_device_present_queue_family,
-                    .queueCount         = 1,
-                    .pQueuePriorities   = (float[]) { 1.0f },
+                    .queueFamilyIndex       = best_device_present_queue_family,
+                    .queueCount             = 1,
+                    .pQueuePriorities       = (float[]) { 1.0f },
                 }
             },
             .pNext = & (VkPhysicalDeviceFeatures2) 
@@ -413,11 +460,187 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
                         .dynamicRendering   = VK_TRUE,
                     },
                 },
-            }
+            },
+            .enabledExtensionCount          = 1,
+            .ppEnabledExtensionNames        = (const char *[])
+            {
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            },
         },
         0,
         &renderer->device));
+    volkLoadDevice(renderer->device);
+
+    renderer->graphics.queue_family_index = best_device_graphics_queue_family;
+    renderer->presentation.queue_family_index = best_device_present_queue_family;
+
+    vkGetDeviceQueue(
+        renderer->device,
+        best_device_graphics_queue_family,
+        0,
+        &renderer->graphics.queue);
+
+    vkGetDeviceQueue(
+        renderer->device,
+        best_device_present_queue_family,
+        0,
+        &renderer->presentation.queue);
+
     return 0;
+}
+
+static void create_swapchain_image_views_and_framebuffers(
+    const char      *name,
+    VD_Renderer     *renderer,
+    VkSurfaceKHR    surface,
+    VkExtent2D      extent,
+    VkSwapchainKHR  *out_swapchain,
+    VkFormat        *out_format)
+{
+    u32                 image_count;
+    VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
+    int                 best_present_mode = -1;
+
+    VkSwapchainKHR      swapchain;
+
+    VD_LOG_FMT("Renderer", "Creating swapchain for window with name: %{cstr}", name);
+
+// ----SURFACE CAPABILITIES-------------------------------------------------------------------------
+
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    VD_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        renderer->physical_device,
+        surface,
+        &surface_capabilities));
+
+    image_count = surface_capabilities.minImageCount + 1;
+    if (surface_capabilities.maxImageCount > 0 &&
+        image_count > surface_capabilities.maxImageCount)
+    {
+        image_count = surface_capabilities.maxImageCount;
+    }
+
+// ----SURFACE FORMAT-------------------------------------------------------------------------------
+
+    dynarray VkSurfaceFormatKHR *surface_formats = 0;
+    array_init(surface_formats, VD_MM_FRAME_ALLOCATOR());
+    {
+        u32 surface_format_count;
+        VD_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(
+            renderer->physical_device,
+            surface,
+            &surface_format_count,
+            0));
+
+        array_addn(surface_formats, surface_format_count);
+
+        VD_VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(
+            renderer->physical_device,
+            surface,
+            &surface_format_count,
+            surface_formats));
+    }
+
+    for (int i = 0; i < array_len(surface_formats); ++i)
+    {
+        VkSurfaceFormatKHR q_surface_format = surface_formats[i];
+
+        for (int j = 0; j < ARRAY_COUNT(Preferred_Surface_Formats); ++j)
+        {
+            if (q_surface_format.format == Preferred_Surface_Formats[j].format &&
+                q_surface_format.colorSpace == Preferred_Surface_Formats[j].colorSpace)
+            {
+                best_surface_format = q_surface_format;
+                break;
+            }
+        }
+    }
+
+    if (best_surface_format.format == VK_FORMAT_UNDEFINED) {
+        VD_LOG_FMT(
+            "Renderer",
+            "No preferred surface format found for window with name: %{cstr}", name);
+        abort();
+    }
+
+    VD_LOG_FMT(
+        "Renderer",
+        "Chosen Surface Format:%{cstr} %{cstr}",
+        vkformat_to_string(best_surface_format.format),
+        vkcolorspacekhr_to_string(best_surface_format.colorSpace));
+
+// ----PRESENT MODE---------------------------------------------------------------------------------
+
+    dynarray VkPresentModeKHR *surface_present_modes = 0;
+    array_init(surface_present_modes , VD_MM_FRAME_ALLOCATOR());
+    {
+        u32 num_surface_present_modes;
+        VD_VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(
+            renderer->physical_device,
+            surface,
+            &num_surface_present_modes,
+            0));
+
+        array_addn(surface_present_modes, num_surface_present_modes);
+        
+        VD_VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(
+            renderer->physical_device,
+            surface,
+            &num_surface_present_modes,
+            surface_present_modes));
+    }
+
+
+    for (int i = 0; i < array_len(surface_present_modes); ++i)
+    {
+        VD_LOG_FMT(
+            "Renderer",
+            "Present Mode[%{i32}]: %{cstr}",
+            i,
+            vkpresentmodekhr_to_string(surface_present_modes[i]));
+
+        for (int j = 0; j < ARRAY_COUNT(Preferred_Present_Modes); ++j)
+        {
+            if (surface_present_modes[i] == Preferred_Present_Modes[j])
+            {
+                best_present_mode = i;
+                break;
+            }
+        }
+    }
+
+    if (best_present_mode == -1) {
+        VD_LOG_FMT(
+            "Renderer",
+            "No preferred present mode found for window with name: %{cstr}", name);
+        abort();
+    }
+
+    VD_LOG_FMT(
+        "Renderer",
+        "Chosen Present Mode: %{cstr}",
+        vkpresentmodekhr_to_string(surface_present_modes[best_present_mode]));
+
+    VD_VK_CHECK(vkCreateSwapchainKHR(
+        renderer->device,
+        &(VkSwapchainCreateInfoKHR){
+            .sType                  = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface                = surface,
+            .minImageCount          = image_count,
+            .imageFormat            = best_surface_format.format,
+            .imageColorSpace        = best_surface_format.colorSpace,
+            .imageExtent            = extent,
+            .imageArrayLayers       = 1,
+            .imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageSharingMode       = VK_SHARING_MODE_EXCLUSIVE,
+            .preTransform           = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            .compositeAlpha         = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        },
+        0,
+        &swapchain));
+
+    *out_swapchain  = swapchain;
+    *out_format     = best_surface_format.format;
 }
 
 void RendererOnWindowComponentSet(ecs_iter_t *it)
@@ -432,7 +655,45 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             continue;
         }
 
+        const Size2D *window_size = ecs_get(it->world, it->entities[i], Size2D);
         VkSurfaceKHR surface = w[i].create_surface(&w[i], renderer->instance);
+
+        vkDeviceWaitIdle(renderer->device);
+
+        VkSwapchainKHR  swapchain;
+        VkFormat        surface_format;
+        create_swapchain_image_views_and_framebuffers(
+            ecs_get_name(it->world, it->entities[i]),
+            renderer,
+            surface,
+            (VkExtent2D) { window_size->x, window_size->y },
+            &swapchain,
+            &surface_format);
+
+        ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
+            .surface = surface,
+            .surface_format = surface_format,
+            .images = 0,
+            .image_views = 0,
+            .extent = { window_size->x, window_size->y },
+        });
+    }
+}
+
+void RendererOnWindowComponentRemove(ecs_iter_t *it)
+{
+    VD_LOG("Renderer", "Removing WindowComponent");
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+
+    WindowComponent *w = ecs_field(it, WindowComponent, 0);
+
+    for (int i = 0; i < it->count; ++i) {
+        const WindowSurfaceComponent *ws = ecs_get(
+            it->world,
+            it->entities[i],
+            WindowSurfaceComponent);
+        vkDestroySurfaceKHR(renderer->instance, ws[i].surface, 0);
     }
 }
 

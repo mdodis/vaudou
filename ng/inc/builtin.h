@@ -3,13 +3,9 @@
 #include "common.h"
 
 #include "flecs.h"
+#include "cglm/cglm.h"
 
 /* ----WINDOWS----------------------------------------------------------------------------------- */
-typedef struct {
-    int x;
-    int y;
-} PixelSize;
-
 typedef struct WindowComponent  WindowComponent;
 typedef struct VD_Instance      VD_Instance;
 
@@ -20,6 +16,11 @@ typedef VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(VD_GetPhysicalDevicePre
 
 #define VD_WINDOW_CREATE_SURFACE_PROC(name) void *name(WindowComponent *window, void *instance)
 typedef VD_WINDOW_CREATE_SURFACE_PROC(VD_WindowCreateSurfaceProc);
+
+typedef struct {
+    i32 x;
+    i32 y;
+} Size2D;
 
 struct WindowComponent {
     VD_WindowCreateSurfaceProc  *create_surface;
@@ -32,26 +33,18 @@ struct WindowComponent {
  */
 typedef struct WindowSurfaceComponent WindowSurfaceComponent;
 
-#define VD_WINDOW_CONTAINER_CREATE_WINDOW_PROC(name)	void *name(const char *title, void *usrdata)
-#define VD_WINDOW_CONTAINER_DESTROY_WINDOW_PROC(name)	void name(void *window, void *usrdata)
-#define VD_WINDOW_CONTAINER_POLL_PROC(name)				void name(void *usrdata)
-#define VD_WINDOW_CONTAINER_CREATE_WINDOW_SURFACE_PROC(name) \
-    void *name(void *window, void *instance, void *usrdata)
-typedef VD_WINDOW_CONTAINER_CREATE_WINDOW_PROC(VD_WindowContainerCreateWindowProc);
-typedef VD_WINDOW_CONTAINER_DESTROY_WINDOW_PROC(VD_WindowContainerDestroyWindowProc);
-typedef VD_WINDOW_CONTAINER_POLL_PROC(VD_WindowContainerPollProc);
-typedef VD_WINDOW_CONTAINER_CREATE_WINDOW_SURFACE_PROC(VD_WindowContainerCreateWindowSurfaceProc);
-
 typedef struct {
     VD_Instance *instance;
 } Application;
 
 extern ECS_COMPONENT_DECLARE(WindowComponent);
 extern ECS_COMPONENT_DECLARE(WindowSurfaceComponent);
-extern ECS_COMPONENT_DECLARE(PixelSize);
+extern ECS_COMPONENT_DECLARE(Size2D);
 extern ECS_COMPONENT_DECLARE(Application);
+extern ECS_DECLARE(WindowDestroyEvent);
 extern ECS_DECLARE(AppQuitEvent);
 extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
+extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentRemove);
 
 /* ----MEMORY------------------------------------------------------------------------------------ */
 

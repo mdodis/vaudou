@@ -77,6 +77,7 @@ extern VD_Log *VD__Log;
 
 #endif // !VD_LOG_H
 
+
 #ifdef VD_LOG_IMPLEMENTATION
 
 VD_Log *VD__Log;

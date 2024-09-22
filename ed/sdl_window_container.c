@@ -4,6 +4,7 @@
 #include "common.h"
 #include "volk.h"
 #include "SDL3/SDL_vulkan.h"
+#include "vd_log.h"
 
 static int Sdl_Initialized = 0;
 static void ensure_sdl_initialized()
@@ -53,6 +54,11 @@ static void OnAddWindowObserver(ecs_iter_t *it)
         const char *name = ecs_get_name(it->world, it->entities[i]);
 
         SDL_Window *window_ptr = SDL_CreateWindow(name, 640, 480, SDL_WINDOW_VULKAN);
+        
+        ecs_set(it->world, it->entities[i], Size2D, {
+            .x = 640,
+            .y = 480,
+        });
         ecs_set(it->world, it->entities[i], WindowComponent, {
             .window_ptr = window_ptr,
             .create_surface = sdl_create_surface_proc,
@@ -99,11 +105,20 @@ static void PollSDLEvents(ecs_iter_t *it)
 
                     for (int i = 0; i < qit.count; ++i) {
                         if (w[i].window_ptr == closed_window) {
+                            ecs_emit(it->world, &(ecs_event_desc_t) {
+                                .event = WindowDestroyEvent,
+                                    .entity = qit.entities[i],
+                                    .ids = &(ecs_type_t) {
+                                    .array = (ecs_id_t[]){ ecs_id(WindowComponent) },
+                                        .count = 1,
+                                },
+                            });
                             ecs_delete(it->world, qit.entities[i]);
                         }
                     }
                 }
 
+                VD_LOG("Editor", "Destroy window");
                 SDL_DestroyWindow(closed_window);
 
                 if (remaining_windows == 0) {

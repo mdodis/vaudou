@@ -27,6 +27,9 @@ struct VD_Instance {
     int should_close;
 };
 
+
+static void vd_ecs_log(int32_t level, const char *file, int32_t line, const char *msg);
+
 VD_Instance* vd_instance_create()
 {
     return calloc(1, sizeof(VD_Instance));
@@ -45,7 +48,11 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
     vd_mm_init(instance->mm);
 
     str exec_path = vd_get_exec_path(vd_mm_get_frame_arena(instance->mm));
-    str log_path = vd_snfmt(vd_mm_get_frame_arena(instance->mm), "%{stru32}/engine.vdlog%{null}", vd_str_chop_right_last_of(exec_path, '/'));
+    str log_path = vd_snfmt(
+            vd_mm_get_frame_arena(
+                instance->mm),
+                "%{stru32}/engine.vdlog%{null}",
+                vd_str_chop_right_last_of(exec_path, '/'));
 
     instance->log.filepath = strdup(log_path.data);
     instance->log.flags = VD_LOG_WRITE_STDOUT;
@@ -56,7 +63,12 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 
     VD_LOG("Instance", ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin Log");
 
+    ecs_os_set_api_defaults();
+    ecs_os_api_t os_api = ecs_os_get_api();
+    os_api.log_ = vd_ecs_log;
+    ecs_os_set_api(&os_api);
     instance->world = ecs_init();
+
     ECS_IMPORT(instance->world, Builtin);
 
     ecs_singleton_set(instance->world, Application, { .instance = instance });
@@ -99,8 +111,8 @@ void vd_instance_main(VD_Instance *instance)
 
 void vd_instance_deinit(VD_Instance *instance)
 {
-    ecs_fini(instance->world);
     vd_renderer_deinit(instance->r);
+    ecs_fini(instance->world);
 }
 
 void vd_instance_destroy(VD_Instance *instance)
@@ -133,3 +145,12 @@ VD_Renderer *vd_instance_get_renderer(VD_Instance *instance)
     return instance->r;
 }
 
+VD_Log *vd_instance_get_log(VD_Instance *instance)
+{
+    return &instance->log;
+}
+
+static void vd_ecs_log(int32_t level, const char *file, int32_t line, const char *msg)
+{
+    VD_LOG_FMT("Flecs", "%{i32} %{cstr}::%{i32}: %{cstr}", level, file, line, msg);
+}

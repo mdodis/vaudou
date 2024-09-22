@@ -2,6 +2,8 @@
 #include "builtin.h"
 #include "ed.h"
 #include "sdl_window_container.h"
+#define VD_LOG_IMPLEMENTATION
+#include "vd_log.h"
 
 static struct {
     VD_Instance *instance;
@@ -20,6 +22,8 @@ int main(int argc, char const *argv[]) {
             .get_physical_device_presentation_support   = sdl_get_physical_device_presentation_support_proc,
         },
     });
+
+    VD_LOG_SET(vd_instance_get_log(G.instance));
 
     ecs_world_t *world = vd_instance_get_world(G.instance);
     ecs_singleton_set(world, EcsRest, { 0 });

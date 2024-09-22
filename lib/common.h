@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /* ----HOST COMPILER----------------------------------------------------------------------------- */
 #if defined(__GNUC__) || defined(__clang__)
@@ -163,21 +164,20 @@ typedef bool VD_bool;
 #define VD_I64_MAX   INT64_MAX
 #define VD_SIZET_MAX SIZE_MAX
 
-/* ----LOCAL ABBREVIATIONS----------------------------------------------------------------------- */
-#if VD_ABBREVIATIONS && VD_C
-#define true  VD_TRUE
-#define false VD_FALSE
-#endif
+/* ----SIZES------------------------------------------------------------------------------------ */
+#define VD_KILOBYTES(x) x * 1024
+#define VD_MEGABYTES(x) VD_KILOBYTES(x) * 1024
 
+#define VD_ARRAY_COUNT(s) (sizeof(s) / sizeof(*s))
+
+/* ----LOCAL ABBREVIATIONS----------------------------------------------------------------------- */
 #if VD_ABBREVIATIONS
 #define _impossible(x) VD_IMPOSSIBLE(x)
 #define _inline VD_INLINE
 #define _internal VD_INTERNAL
 #define _unused(x) VD_UNUSED(x)
 
-#if VD_C
-#define bool VD_bool
-#endif
+#define ARRAY_COUNT VD_ARRAY_COUNT
 #endif
 
 #endif // VD_COMMON_H

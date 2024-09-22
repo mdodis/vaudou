@@ -10,8 +10,6 @@ target_link_libraries(vdng
     PUBLIC vdlib flecs
     PRIVATE volk)
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(vdng
-        PRIVATE VD_ENABLE_VALIDATION_LAYERS)
-elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
+if (VD_OPTION_ENABLE_VALIDATION_LAYERS)
+    target_compile_definitions(vdng PRIVATE VD_ENABLE_VALIDATION_LAYERS)
 endif()

@@ -6,5 +6,5 @@ add_executable(vded ${SOURCES} ${HEADERS})
 target_include_directories(vded PRIVATE ".")
 
 target_link_libraries(vded 
-    PUBLIC 
-    vdng vdlib SDL3::SDL3)
+    PUBLIC vdng vdlib SDL3::SDL3
+    PRIVATE volk)

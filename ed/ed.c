@@ -15,8 +15,9 @@ int main(int argc, char const *argv[]) {
     get_required_extensions(&num_extensions, &extensions);
     vd_instance_init(G.instance, &(VD_InstanceInitInfo) {
         .vulkan = {
-            .num_enabled_extensions = num_extensions,
-            .enabled_extensions = extensions,
+            .num_enabled_extensions                     = num_extensions,
+            .enabled_extensions                         = extensions,
+            .get_physical_device_presentation_support   = sdl_get_physical_device_presentation_support_proc,
         },
     });
 

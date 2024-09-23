@@ -11,4 +11,6 @@ VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(sdl_get_physical_device_present
 
 extern void SdlImport(ecs_world_t *world);
 
+void sdl_deinit();
+
 #endif // !SDL_WINDOW_CONTAINER_H

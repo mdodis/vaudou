@@ -2,8 +2,12 @@
 #define VD_BUILTIN_H
 #include "common.h"
 
+#include "delegate.h"
+
 #include "flecs.h"
 #include "cglm/cglm.h"
+
+VD_DELEGATE_DECLARE_PARAMS1_VOID(VD_ImmediateDestroyEntity, ecs_entity_t, entity)
 
 /* ----WINDOWS----------------------------------------------------------------------------------- */
 typedef struct WindowComponent  WindowComponent;
@@ -23,8 +27,9 @@ typedef struct {
 } Size2D;
 
 struct WindowComponent {
-    VD_WindowCreateSurfaceProc  *create_surface;
-    void                        *window_ptr;
+    VD_WindowCreateSurfaceProc              *create_surface;
+    void                                    *window_ptr;
+    VD_CALLBACK(VD_ImmediateDestroyEntity)  on_immediate_destroy;
 };
 
 /**
@@ -41,10 +46,8 @@ extern ECS_COMPONENT_DECLARE(WindowComponent);
 extern ECS_COMPONENT_DECLARE(WindowSurfaceComponent);
 extern ECS_COMPONENT_DECLARE(Size2D);
 extern ECS_COMPONENT_DECLARE(Application);
-extern ECS_DECLARE(WindowDestroyEvent);
 extern ECS_DECLARE(AppQuitEvent);
 extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
-extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentRemove);
 
 /* ----MEMORY------------------------------------------------------------------------------------ */
 

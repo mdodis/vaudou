@@ -105,21 +105,10 @@ static void PollSDLEvents(ecs_iter_t *it)
 
                     for (int i = 0; i < qit.count; ++i) {
                         if (w[i].window_ptr == closed_window) {
-                            ecs_emit(it->world, &(ecs_event_desc_t) {
-                                .event = WindowDestroyEvent,
-                                    .entity = qit.entities[i],
-                                    .ids = &(ecs_type_t) {
-                                    .array = (ecs_id_t[]){ ecs_id(WindowComponent) },
-                                        .count = 1,
-                                },
-                            });
                             ecs_delete(it->world, qit.entities[i]);
                         }
                     }
                 }
-
-                VD_LOG("Editor", "Destroy window");
-                SDL_DestroyWindow(closed_window);
 
                 if (remaining_windows == 0) {
                     ecs_emit(it->world, &(ecs_event_desc_t) {
@@ -144,6 +133,16 @@ void get_required_extensions(u32 *num_extensions, const char ***extensions)
     SDL_DestroyWindow(dummy_window);
 }
 
+static void OnWindowComponentRemoveHook(ecs_iter_t *it)
+{
+    ensure_sdl_initialized();
+    WindowComponent *w = ecs_field(it, WindowComponent, 0);
+    for (int i = 0; i < it->count; ++i) {
+        VD_CALLBACK_INVOKE(w[i].on_immediate_destroy, it->entities[i]);
+        SDL_Window *window_ptr = (SDL_Window*)w->window_ptr;
+        SDL_DestroyWindow(window_ptr);
+    }
+}
 
 void SdlImport(ecs_world_t *world)
 {
@@ -157,6 +156,10 @@ void SdlImport(ecs_world_t *world)
         }),
         .multi_threaded = false,
         .callback = PollSDLEvents
+    });
+
+    ecs_set_hooks(world, WindowComponent, {
+        .on_remove = OnWindowComponentRemoveHook,
     });
 
     ecs_observer(world, {
@@ -174,4 +177,9 @@ void SdlImport(ecs_world_t *world)
         .callback = OnSetWindowNameObserver,
     });
 
+}
+
+void sdl_deinit()
+{
+    SDL_Quit();
 }

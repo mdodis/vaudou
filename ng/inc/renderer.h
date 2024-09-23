@@ -25,6 +25,7 @@ typedef struct {
 } VD_RendererInitInfo;
 
 struct WindowSurfaceComponent {
+    VkSwapchainKHR          swapchain;
     VkSurfaceKHR            surface;
     VkFormat                surface_format;
     VD_ARRAY VkImage        *images;
@@ -37,7 +38,6 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info);
 int vd_renderer_deinit(VD_Renderer *renderer);
 
 extern void RendererOnWindowComponentSet(ecs_iter_t *it);
-extern void RendererOnWindowComponentRemove(ecs_iter_t *it);
 
 #ifdef VD_ENABLE_VALIDATION_LAYERS
 #define VD_VALIDATION_LAYERS 1

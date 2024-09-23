@@ -101,7 +101,7 @@ void vd_instance_main(VD_Instance *instance)
     ecs_entity_t w = ecs_entity(instance->world, { .name = "Vaudou" });
     ecs_add(instance->world, w, WindowComponent);
 
-    while(!instance->should_close) {
+    while (!instance->should_close) {
         ecs_progress(instance->world, 0.0f);
         vd_mm_end_frame(instance->mm);
     }

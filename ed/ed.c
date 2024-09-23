@@ -33,6 +33,7 @@ int main(int argc, char const *argv[]) {
     vd_instance_main(G.instance);
 
     vd_instance_deinit(G.instance);
+    sdl_deinit();
     vd_instance_destroy(G.instance);
     return 0;
 }

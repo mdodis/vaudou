@@ -643,15 +643,22 @@ static void create_swapchain_image_views_and_framebuffers(
     *out_format     = best_surface_format.format;
 }
 
+void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata);
+
 void RendererOnWindowComponentSet(ecs_iter_t *it)
 {
     const Application *app = ecs_singleton_get(it->world, Application);
     VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
 
     WindowComponent *w = ecs_field(it, WindowComponent, 0);
+
     
     for (int i = 0; i < it->count; ++i) {
         if (w[i].create_surface == 0) {
+            continue;
+        }
+
+        if (ecs_get(it->world, it->entities[i], WindowSurfaceComponent)) {
             continue;
         }
 
@@ -671,30 +678,25 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             &surface_format);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
+            .swapchain = swapchain,
             .surface = surface,
             .surface_format = surface_format,
             .images = 0,
             .image_views = 0,
             .extent = { window_size->x, window_size->y },
         });
+
+        VD_CALLBACK_SET(w[i].on_immediate_destroy, on_window_component_immediate_destroy, renderer);
+        ecs_modified(it->world, it->entities[i], WindowComponent);
     }
 }
 
-void RendererOnWindowComponentRemove(ecs_iter_t *it)
+void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 {
-    VD_LOG("Renderer", "Removing WindowComponent");
-    const Application *app = ecs_singleton_get(it->world, Application);
-    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
-
-    WindowComponent *w = ecs_field(it, WindowComponent, 0);
-
-    for (int i = 0; i < it->count; ++i) {
-        const WindowSurfaceComponent *ws = ecs_get(
-            it->world,
-            it->entities[i],
-            WindowSurfaceComponent);
-        vkDestroySurfaceKHR(renderer->instance, ws[i].surface, 0);
-    }
+    VD_Renderer *renderer = (VD_Renderer*)usrdata;
+    WindowSurfaceComponent *ws = ecs_get(renderer->world, entity, WindowSurfaceComponent);
+    vkDestroySwapchainKHR(renderer->device, ws->swapchain, 0);
+    vkDestroySurfaceKHR(renderer->instance, ws->surface, 0);
 }
 
 int vd_renderer_deinit(VD_Renderer *renderer)

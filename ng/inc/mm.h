@@ -26,19 +26,24 @@ typedef enum {
 } VD_MM_Tag;
 
 typedef struct VD_MM VD_MM;
-typedef struct VD_AllocationInfo VD_AllocationInfo;
 
-struct VD_AllocationInfo {
+typedef struct {
     /* Input */
-    void        *ptr;
-    size_t       size;
-    VD_MM_Tag    tag;
+    void            *ptr;
+    size_t          size;
+    VD_MM_Tag       tag;
+    u64             entity_id;
+} VD_AllocationInfo;
 
-    /* Reserved */
-    int                  used;
-    VD_AllocationInfo   *free_next;
-    VD_AllocationInfo   *free_prev;
-};
+typedef struct {
+    u64 frame_used;
+    u64 frame_total;
+
+    u64 entity_used;
+    u64 entity_total;
+    u64 num_entity_blocks;
+    u64 num_free_entity_blocks;
+} VD_MM_Stats;
 
 #define VD_MM_ALLOC(n, t) vd_mm_alloc(vd_instance_get_mm(vd_instance_get()),  \
     &(VD_AllocationInfo) {                                                    \
@@ -56,15 +61,24 @@ struct VD_AllocationInfo {
 #define VD_MM_FRAME_ALLOC_STRUCT(s) (s*)VD_MM_ALLOC(sizeof(s), VD_MM_FRAME)
 #define VD_MM_FRAME_ALLOC_ARRAY(s, n) (s*)VD_MM_FRAME_ALLOC(sizeof(s)*n)
 
+#define VD_MM_ENTITY_ALLOCATOR(id) \
+    vd_mm_make_entity_allocator(vd_instance_get_mm(vd_instance_get()), id)
+
 VD_MM *vd_mm_create();
 void vd_mm_init(VD_MM *mm);
 void *vd_mm_alloc(VD_MM *mm, VD_AllocationInfo *info);
 
 VD_Arena *vd_mm_get_frame_arena(VD_MM *mm);
 VD_Allocator *vd_mm_get_frame_allocator(VD_MM *mm);
-void vd_mm_end_frame(VD_MM *mm);
+
+VD_Allocator vd_mm_make_entity_allocator(VD_MM *mm, u64 entity_id);
+
+void vd_mm_get_stats(VD_MM *mm, VD_MM_Stats *stats);
 
 void vd_mm_deinit(VD_MM *mm);
+
 extern void GarbageCollectTask(struct ecs_iter_t *t);
+extern void FreeFrameAllocationSystem(struct ecs_iter_t *t);
+
 
 #endif

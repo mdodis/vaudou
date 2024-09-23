@@ -89,6 +89,12 @@ VD_INLINE VD_PROC_ALLOC(vd_arena_proc_alloc)
     return nptr;
 }
 
+VD_INLINE void vd_arena_get_stats(VD_Arena *arena, u64 *used, u64 *total)
+{
+    *used = arena->begin - arena->data;
+    *total = arena->end - arena->data;
+}
+
 
 #if VD_ABBREVIATIONS
 #define Arena VD_Arena

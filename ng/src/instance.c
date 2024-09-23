@@ -106,13 +106,14 @@ void vd_instance_main(VD_Instance *instance)
         vd_mm_end_frame(instance->mm);
     }
     
-    VD_LOG("Instance", "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< End Log");
 }
 
 void vd_instance_deinit(VD_Instance *instance)
 {
     vd_renderer_deinit(instance->r);
     ecs_fini(instance->world);
+    vd_mm_deinit(instance->mm);
+    VD_LOG("Instance", "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< End Log");
 }
 
 void vd_instance_destroy(VD_Instance *instance)

@@ -490,18 +490,23 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 }
 
 static void create_swapchain_image_views_and_framebuffers(
-    const char      *name,
-    VD_Renderer     *renderer,
-    VkSurfaceKHR    surface,
-    VkExtent2D      extent,
-    VkSwapchainKHR  *out_swapchain,
-    VkFormat        *out_format)
+    const char              *name,
+    ecs_entity_t            entity,
+    VD_Renderer             *renderer,
+    VkSurfaceKHR            surface,
+    VkExtent2D              extent,
+    VkSwapchainKHR          *out_swapchain,
+    VkFormat                *out_format,
+    dynarray VkImage        **out_images,
+    dynarray VkImageView    **out_image_views)
 {
     u32                 image_count;
     VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
     int                 best_present_mode = -1;
-
-    VkSwapchainKHR      swapchain;
+    
+    VkSwapchainKHR          swapchain;
+    dynarray VkImage        *images = 0;
+    dynarray VkImageView    *image_views = 0;
 
     VD_LOG_FMT("Renderer", "Creating swapchain for window with name: %{cstr}", name);
 
@@ -632,15 +637,55 @@ static void create_swapchain_image_views_and_framebuffers(
             .imageExtent            = extent,
             .imageArrayLayers       = 1,
             .imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            .imageSharingMode       = VK_SHARING_MODE_EXCLUSIVE,
-            .preTransform           = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            .preTransform           = surface_capabilities.currentTransform,
             .compositeAlpha         = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .imageSharingMode       = renderer->graphics.queue_family_index == renderer->presentation.queue_family_index
+                ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount  = renderer->graphics.queue_family_index == renderer->presentation.queue_family_index 
+                ? 0 : 2,
+            .pQueueFamilyIndices    = renderer->graphics.queue_family_index == renderer->presentation.queue_family_index
+                ? 0 : (u32[]) 
+                {
+                    renderer->graphics.queue_family_index, renderer->presentation.queue_family_index
+                },
+            .presentMode            = surface_present_modes[best_present_mode],
+            .clipped                = VK_TRUE,
+            .oldSwapchain           = VK_NULL_HANDLE,
         },
         0,
         &swapchain));
 
-    *out_swapchain  = swapchain;
-    *out_format     = best_surface_format.format;
+
+    VD_Allocator entity_allocator = VD_MM_ENTITY_ALLOCATOR(entity);
+// ----SWAPCHAIN IMAGES-----------------------------------------------------------------------------
+    array_init(images, &entity_allocator);
+    {
+        u32 num_swapchain_images;
+        VD_VK_CHECK(vkGetSwapchainImagesKHR(
+            renderer->device,
+            swapchain,
+            &num_swapchain_images,
+            0));
+
+        array_addn(images, num_swapchain_images);
+
+        VD_VK_CHECK(vkGetSwapchainImagesKHR(
+            renderer->device,
+            swapchain,
+            &num_swapchain_images,
+            images));
+    }
+    
+// ----SWAPCHAIN IMAGE VIEWS------------------------------------------------------------------------
+    array_init(image_views, &entity_allocator);
+    {
+
+    }
+
+    *out_swapchain      = swapchain;
+    *out_format         = best_surface_format.format;
+    *out_images         = images;
+    *out_image_views    = image_views;
 }
 
 void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata);
@@ -667,15 +712,20 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
 
         vkDeviceWaitIdle(renderer->device);
 
-        VkSwapchainKHR  swapchain;
-        VkFormat        surface_format;
+        VkSwapchainKHR          swapchain;
+        VkFormat                surface_format;
+        dynarray VkImage        *images;
+        dynarray VkImageView    *image_views;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
+            it->entities[i],
             renderer,
             surface,
             (VkExtent2D) { window_size->x, window_size->y },
             &swapchain,
-            &surface_format);
+            &surface_format,
+            &images,
+            &image_views);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,

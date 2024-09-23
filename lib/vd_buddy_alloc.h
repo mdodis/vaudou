@@ -23,8 +23,14 @@ typedef struct {
 
 VD_BUDDY_ALLOCATION_PROC(vd_buddy_alloc_default_palloc);
 void vd_buddy_alloc_init(VD_BuddyAlloc *alloc, VD_BuddyAllocationProc *palloc, void *usrdata, size_t initial_size, size_t alignment);
-void *vd_bully_alloc_realloc(VD_BuddyAlloc *alloc, void *ptr, size_t size);
+void *vd_buddy_alloc_realloc(VD_BuddyAlloc *alloc, void *ptr, size_t size);
 void vd_buddy_alloc_deinit(VD_BuddyAlloc *alloc);
+void vd_buddy_alloc_get_stats(
+    VD_BuddyAlloc *alloc,
+    size_t *used,
+    size_t *total,
+    size_t *num_blocks,
+    size_t *num_free_blocks);
 
 #endif // !VD_BUDDY_ALLOC_H
 
@@ -235,7 +241,7 @@ void vd_buddy_alloc_init(VD_BuddyAlloc *alloc, VD_BuddyAllocationProc *palloc, v
     alloc->alignment        = alignment < sizeof(VD_BuddyBlock) ? sizeof(VD_BuddyBlock) : alignment;
 }
 
-void *vd_bully_alloc_realloc(VD_BuddyAlloc *alloc, void *ptr, size_t size)
+void *vd_buddy_alloc_realloc(VD_BuddyAlloc *alloc, void *ptr, size_t size)
 {
     if (ptr == 0) {
         size_t actual_size = vd_buddy_alloc__size_req(alloc, size);
@@ -268,6 +274,51 @@ void *vd_bully_alloc_realloc(VD_BuddyAlloc *alloc, void *ptr, size_t size)
 void vd_buddy_alloc_deinit(VD_BuddyAlloc *alloc)
 {
     alloc->proc(alloc->head, alloc->head->size, 0, alloc->usrdata);
+}
+
+void vd_buddy_alloc_get_stats(
+    VD_BuddyAlloc *alloc,
+    size_t *used,
+    size_t *total,
+    size_t *num_blocks,
+    size_t *num_free_blocks)
+{
+    size_t used_bytes = 0;
+    size_t total_bytes = 0;
+    size_t num_blocks_ = 0;
+    size_t num_free_blocks_ = 0;
+
+    VD_BuddyBlock *block = alloc->head;
+    VD_BuddyBlock *tail = alloc->tail;
+
+    while (block < tail) {
+        total_bytes += block->size;
+        num_blocks_++;
+
+        if (block->is_free) {
+            num_free_blocks_++;
+        } else {
+            used_bytes += block->size;
+        }
+
+        block = vd_buddy_alloc__next_block(block);
+    }
+
+    if (used != 0) {
+        *used = used_bytes;
+    }
+
+    if (total != 0) {
+        *total = total_bytes;
+    }
+
+    if (num_blocks != 0) {
+        *num_blocks = num_blocks_;
+    }
+
+    if (num_free_blocks != 0) {
+        *num_free_blocks = num_free_blocks_;
+    }
 }
 
 #endif

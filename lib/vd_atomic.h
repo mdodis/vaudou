@@ -58,6 +58,7 @@
 #define compare_and_swapu32   vd_atomic_compare_and_swapu32
 #define compare_and_swap64    vd_atomic_compare_and_swap64
 #define compare_and_swap_ptr  vd_atomic_compare_and_swap_ptr
+#define load_ptr              vd_atomic_load_ptr
 #define inc_and_fetch32       vd_atomic_inc_and_fetch32
 #define inc_and_fetchu32      vd_atomic_inc_and_fetchu32
 #define add_and_fetch32       vd_atomic_add_and_fetch32
@@ -75,7 +76,6 @@
 
 _inline int32_t vd_atomic_compare_and_swap32(volatile int32_t *ptr, int32_t new_value, int32_t expected) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
-
     return _InterlockedCompareExchange(ptr, new_value, expected);
 #else
     return __sync_val_compare_and_swap(ptr, expected, new_value);
@@ -103,6 +103,14 @@ _inline void *vd_atomic_compare_and_swap_ptr(void *volatile *ptr, void *new_valu
     return _InterlockedCompareExchangePointer(ptr, new_value, expected);
 #else
     return __sync_val_compare_and_swap(ptr, expected, new_value);
+#endif
+}
+
+_inline void *vd_atomic_load_ptr(void *volatile ptr)
+{
+#if VD_ATOMIC_PLATFORM_WINDOWS
+    return _InterlockedCompareExchangePointer(ptr, 0, 0);
+#else
 #endif
 }
 

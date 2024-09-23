@@ -9,10 +9,12 @@
 
 VD_DELEGATE_DECLARE_PARAMS1_VOID(VD_ImmediateDestroyEntity, ecs_entity_t, entity)
 
+// ----GENERAL--------------------------------------------------------------------------------------
+#define VD_DTOR_PROC(name) void name(void *ptr, i32 count, const ecs_type_info_t *type)
+
 /* ----WINDOWS----------------------------------------------------------------------------------- */
 typedef struct WindowComponent  WindowComponent;
 typedef struct VD_Instance      VD_Instance;
-
 
 #define VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(name) \
 	int name(void *vk_instance, void *vk_physical_device, u32 queue_family_index, void *usrdata)
@@ -51,6 +53,19 @@ extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
 
 /* ----MEMORY------------------------------------------------------------------------------------ */
 
+/**
+ * @brief Used to store memory information for automatic deletion.
+ * @note  Entity-local memory allocations last up until and including the entity's destruction.
+ * @note  This is because the garbage collection task is run after the frame is finished.
+ */
+typedef struct {
+    void *opaque_info_ptr;
+} MemoryComponent;
+
+extern ECS_COMPONENT_DECLARE(MemoryComponent);
+extern VD_DTOR_PROC(MemoryComponentDtor);
+
+extern ECS_SYSTEM_DECLARE(FreeFrameAllocationSystem);
 extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
 
 void BuiltinImport(ecs_world_t *world);

@@ -12,7 +12,7 @@ VD_DELEGATE_DECLARE_PARAMS1_VOID(VD_ImmediateDestroyEntity, ecs_entity_t, entity
 // ----GENERAL--------------------------------------------------------------------------------------
 #define VD_DTOR_PROC(name) void name(void *ptr, i32 count, const ecs_type_info_t *type)
 
-/* ----WINDOWS----------------------------------------------------------------------------------- */
+// ----WINDOWS--------------------------------------------------------------------------------------
 typedef struct WindowComponent  WindowComponent;
 typedef struct VD_Instance      VD_Instance;
 
@@ -49,9 +49,8 @@ extern ECS_COMPONENT_DECLARE(WindowSurfaceComponent);
 extern ECS_COMPONENT_DECLARE(Size2D);
 extern ECS_COMPONENT_DECLARE(Application);
 extern ECS_DECLARE(AppQuitEvent);
-extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
 
-/* ----MEMORY------------------------------------------------------------------------------------ */
+// ----MEMORY---------------------------------------------------------------------------------------
 
 /**
  * @brief Used to store memory information for automatic deletion.
@@ -67,6 +66,12 @@ extern VD_DTOR_PROC(MemoryComponentDtor);
 
 extern ECS_SYSTEM_DECLARE(FreeFrameAllocationSystem);
 extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
+
+// ----RENDERER-------------------------------------------------------------------------------------
+extern ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents);
+
+extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
+
 
 void BuiltinImport(ecs_world_t *world);
 

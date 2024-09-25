@@ -8,6 +8,7 @@ VD_DELEGATE_DECLARE_PARAMS1_VOID(VD_UpdateDelegate, float, delta)
 
 typedef VD_HOOK(VD_UpdateDelegate) VD_UpdateHook;
 
+typedef struct VD_CVS       VD_CVS;
 typedef struct VD_Instance 	VD_Instance;
 typedef struct VD_MM        VD_MM;
 typedef struct ecs_world_t 	ecs_world_t;
@@ -34,6 +35,8 @@ ecs_world_t *vd_instance_get_world(VD_Instance *instance);
 VD_MM 		*vd_instance_get_mm(VD_Instance *instance);
 VD_Renderer *vd_instance_get_renderer(VD_Instance *instance);
 VD_Log 		*vd_instance_get_log(VD_Instance *instance);
+VD_CVS 		*vd_instance_get_cvs(VD_Instance *instance);
+
 
 extern VD_Instance *Local_Instance;
 

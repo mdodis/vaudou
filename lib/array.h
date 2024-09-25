@@ -12,12 +12,13 @@ typedef struct {
 
 #define VD_ARRAY_HEADER(a)          ((VD_ArrayHeader*)((u8*)(a) - sizeof(VD_ArrayHeader)))
 #define VD_ARRAY_INIT(a, allocator) ((a) = vd_array_grow(a, sizeof(*(a)), 1, 0, allocator))
-#define VD_ARRAY_DEINIT(a)          (vd_free(VD_ARRAY_ALC(a), VD_ARRAY_HEADER(a), VD_ARRAY_CAP(a) * sizeof(*a)))
+#define VD_ARRAY_DEINIT(a)          (vd_free(VD_ARRAY_ALC(a), (umm)VD_ARRAY_HEADER(a), VD_ARRAY_CAP(a) * sizeof(*a)))
 #define VD_ARRAY_ADD(a, v)          (VD_ARRAY_CHECK_GROW(a,1), (a)[VD_ARRAY_HEADER(a)->len++] = (v))
 #define VD_ARRAY_PUSH(a)            (VD_ARRAY_CHECK_GROW(a,1), VD_ARRAY_HEADER(a)->len++)
 #define VD_ARRAY_ADDN(a, n)         (VD_ARRAY_CHECK_GROW(a,n), VD_ARRAY_HEADER(a)->len += n)
 #define VD_ARRAY_LEN(a)             ((a) ? VD_ARRAY_HEADER(a)->len : 0)
 #define VD_ARRAY_CAP(a)             ((a) ? VD_ARRAY_HEADER(a)->cap : 0)
+#define VD_ARRAY_CLEAR(a)           (VD_ARRAY_HEADER(a)->len = 0)
 #define VD_ARRAY_ALC(a)             ((a) ? VD_ARRAY_HEADER(a)->allocator : 0)
 #define VD_ARRAY_GROW(a, b, c)      ((a) = vd_array_grow((a), sizeof(*(a)), (b), (c), VD_ARRAY_ALC(a)))
 #define VD_ARRAY_POP(a)             (VD_ARRAY_HEADER(a)->len--, (a)[VD_ARRAY_HEADER(a)->len])
@@ -82,6 +83,7 @@ VD_INLINE void *vd_array_grow(
 #define array_pop       VD_ARRAY_POP
 #define array_last      VD_ARRAY_LAST
 #define array_delswap   VD_ARRAY_DELSWAP
+#define array_clear     VD_ARRAY_CLEAR
 #define array_del       VD_ARRAY_DEL
 #define array_deln      VD_ARRAY_DELN
 #define dynarray        VD_ARRAY

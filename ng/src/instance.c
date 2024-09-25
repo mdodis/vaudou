@@ -9,6 +9,7 @@
 #include "mm.h"
 #include "sys.h"
 #include "fmt.h"
+#include "cvar.h"
 
 #include <stdlib.h>
 
@@ -23,6 +24,7 @@ struct VD_Instance {
     VD_UpdateHook			on_update;
     ecs_world_t				*world;
     VD_MM					*mm;
+    VD_CVS                  *cvs;
     VD_Log					log;
     int should_close;
 };
@@ -43,10 +45,12 @@ void OnApplicationQuit(ecs_iter_t *it)
 
 void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 {
+// ----MM-------------------------------------------------------------------------------------------
     Local_Instance = instance;
     instance->mm = vd_mm_create();
     vd_mm_init(instance->mm);
 
+// ----LOG------------------------------------------------------------------------------------------
     str exec_path = vd_get_exec_path(vd_mm_get_frame_arena(instance->mm));
     str log_path = vd_snfmt(
             vd_mm_get_frame_arena(
@@ -63,16 +67,23 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 
     VD_LOG("Instance", ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin Log");
 
+// ----CVS------------------------------------------------------------------------------------------
+    instance->cvs = vd_cvs_create();
+    vd_cvs_init(instance->cvs);
+
+// ----FLECS----------------------------------------------------------------------------------------
     ecs_os_set_api_defaults();
     ecs_os_api_t os_api = ecs_os_get_api();
     os_api.log_ = vd_ecs_log;
     ecs_os_set_api(&os_api);
     instance->world = ecs_init();
+    ecs_set_threads(instance->world, 4);
 
     ECS_IMPORT(instance->world, Builtin);
 
     ecs_singleton_set(instance->world, Application, { .instance = instance });
 
+// ----RENDERER--------------------------------------------------------------------------------------
     instance->r = vd_renderer_create();
     vd_renderer_init(instance->r, &(VD_RendererInitInfo) {
         .instance   = instance,
@@ -110,9 +121,15 @@ void vd_instance_main(VD_Instance *instance)
 
 void vd_instance_deinit(VD_Instance *instance)
 {
+// ----RENDERER-------------------------------------------------------------------------------------
     vd_renderer_deinit(instance->r);
+// ----FLECS----------------------------------------------------------------------------------------
     ecs_fini(instance->world);
+// ----CVS------------------------------------------------------------------------------------------
+    vd_cvs_deinit(instance->cvs);
+// ----MM-------------------------------------------------------------------------------------------
     vd_mm_deinit(instance->mm);
+// ----LOG------------------------------------------------------------------------------------------
     VD_LOG("Instance", "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< End Log");
 }
 
@@ -149,6 +166,11 @@ VD_Renderer *vd_instance_get_renderer(VD_Instance *instance)
 VD_Log *vd_instance_get_log(VD_Instance *instance)
 {
     return &instance->log;
+}
+
+VD_CVS *vd_instance_get_cvs(VD_Instance *instance)
+{
+    return instance->cvs;
 }
 
 static void vd_ecs_log(int32_t level, const char *file, int32_t line, const char *msg)

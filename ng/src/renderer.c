@@ -1,11 +1,17 @@
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "renderer.h"
 
+#define VD_VK_OPTION_INCLUDE_VULKAN_CUSTOM
+#define VD_VK_IMPLEMENTATION
+#define VD_VK_CUSTOM_CHECK(x) VD_VK_CHECK(x)
+#include "vd_vk.h"
+
 #include "ng_cfg.h"
 #include "instance.h"
 #include "builtin.h"
 #include "mm.h"
 #include "vulkan_helpers.h"
+#include "cvar.h"
 
 #include "vd_fmt.h"
 #include "vd_log.h"
@@ -486,32 +492,109 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         0,
         &renderer->presentation.queue);
 
+// ----CVARS----------------------------------------------------------------------------------------
+    VD_CVS_SET_INT("r.inflight-frame-count", 2);
+
     return 0;
 }
 
+static void rebuild_frame_data(
+    const char *name,
+    VD_Renderer *renderer,
+    ecs_entity_t entity,
+    dynarray VD_RendererFrameData **out_frame_data)
+{
+    VD_RendererFrameData *frame_data = *out_frame_data;
+    i32 num_inflight_frames;
+    VD_CVS_GET_INT("r.inflight-frame-count", &num_inflight_frames);
+
+    array_clear(frame_data);
+    array_addn(frame_data, num_inflight_frames);
+
+    for (int i = 0; i < array_len(frame_data); ++i) {
+
+        VD_VK_CHECK(vkCreateCommandPool(
+            renderer->device,
+            & (VkCommandPoolCreateInfo)
+            {
+                .sType              = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                .flags              = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                .queueFamilyIndex   = renderer->graphics.queue_family_index,
+                .pNext              = 0,
+            },
+            0,
+            &frame_data[i].command_pool));
+
+        VD_VK_CHECK(vkAllocateCommandBuffers(
+            renderer->device,
+            & (VkCommandBufferAllocateInfo)
+            {
+                .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .commandPool        = frame_data[i].command_pool,
+                .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+                .pNext              = 0,
+            },
+            &frame_data[i].command_buffer));
+
+        VD_VK_CHECK(vkCreateFence(
+            renderer->device,
+            &(VkFenceCreateInfo){
+                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                .pNext = 0,
+                .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+            },
+            0,
+            &frame_data[i].fnc_render_complete));
+
+        VD_VK_CHECK(vkCreateSemaphore(
+            renderer->device,
+            &(VkSemaphoreCreateInfo){
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                .pNext = 0,
+                .flags = 0,
+            },
+            0,
+            &frame_data[i].sem_image_available));
+
+        VD_VK_CHECK(vkCreateSemaphore(
+            renderer->device,
+            &(VkSemaphoreCreateInfo){
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                .pNext = 0,
+                .flags = 0,
+            },
+            0,
+            &frame_data[i].sem_present_image));
+    }
+
+    *out_frame_data = frame_data;
+}
+
 static void create_swapchain_image_views_and_framebuffers(
-    const char              *name,
-    ecs_entity_t            entity,
-    VD_Renderer             *renderer,
-    VkSurfaceKHR            surface,
-    VkExtent2D              extent,
-    VkSwapchainKHR          *out_swapchain,
-    VkFormat                *out_format,
-    dynarray VkImage        **out_images,
-    dynarray VkImageView    **out_image_views)
+    const char                      *name,
+    ecs_entity_t                    entity,
+    VD_Renderer                     *renderer,
+    VkSurfaceKHR                    surface,
+    VkExtent2D                      extent,
+    VkSwapchainKHR                  *out_swapchain,
+    VkFormat                        *out_format,
+    dynarray VkImage                **out_images,
+    dynarray VkImageView            **out_image_views,
+    dynarray VD_RendererFrameData   **out_frame_data)
 {
     u32                 image_count;
     VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
     int                 best_present_mode = -1;
     
-    VkSwapchainKHR          swapchain;
-    dynarray VkImage        *images = 0;
-    dynarray VkImageView    *image_views = 0;
+    VkSwapchainKHR                  swapchain;
+    dynarray VkImage                *images = 0;
+    dynarray VkImageView            *image_views = 0;
+    dynarray VD_RendererFrameData   *frame_data = 0;
 
     VD_LOG_FMT("Renderer", "Creating swapchain for window with name: %{cstr}", name);
 
 // ----SURFACE CAPABILITIES-------------------------------------------------------------------------
-
     VkSurfaceCapabilitiesKHR surface_capabilities;
     VD_VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
         renderer->physical_device,
@@ -526,7 +609,6 @@ static void create_swapchain_image_views_and_framebuffers(
     }
 
 // ----SURFACE FORMAT-------------------------------------------------------------------------------
-
     dynarray VkSurfaceFormatKHR *surface_formats = 0;
     array_init(surface_formats, VD_MM_FRAME_ALLOCATOR());
     {
@@ -679,13 +761,44 @@ static void create_swapchain_image_views_and_framebuffers(
 // ----SWAPCHAIN IMAGE VIEWS------------------------------------------------------------------------
     array_init(image_views, &entity_allocator);
     {
+        array_addn(image_views, array_len(images));
 
+        for (int i = 0; i < array_len(image_views); ++i) {
+            VD_VK_CHECK(vkCreateImageView(
+                renderer->device,
+                & (VkImageViewCreateInfo) {
+                    .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                    .image              = images[i],
+                    .viewType           = VK_IMAGE_VIEW_TYPE_2D,
+                    .format             = best_surface_format.format,
+                    .components         = {
+                        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+                        .a = VK_COMPONENT_SWIZZLE_IDENTITY,
+                    },
+                    .subresourceRange   = {
+                        .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel   = 0,
+                        .levelCount     = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount     = 1,
+                    },
+                },
+                0,
+                &image_views[i]));
+        }
     }
+
+// ----FRAME DATA-----------------------------------------------------------------------------------
+    array_init(frame_data, &entity_allocator);
+    rebuild_frame_data(name, renderer, entity, &frame_data);
 
     *out_swapchain      = swapchain;
     *out_format         = best_surface_format.format;
     *out_images         = images;
     *out_image_views    = image_views;
+    *out_frame_data     = frame_data;
 }
 
 void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata);
@@ -712,10 +825,11 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
 
         vkDeviceWaitIdle(renderer->device);
 
-        VkSwapchainKHR          swapchain;
-        VkFormat                surface_format;
-        dynarray VkImage        *images;
-        dynarray VkImageView    *image_views;
+        VkSwapchainKHR                  swapchain;
+        VkFormat                        surface_format;
+        dynarray VkImage                *images;
+        dynarray VkImageView            *image_views;
+        dynarray VD_RendererFrameData   *frame_data;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],
@@ -725,15 +839,18 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             &swapchain,
             &surface_format,
             &images,
-            &image_views);
+            &image_views,
+            &frame_data);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,
             .surface = surface,
             .surface_format = surface_format,
-            .images = 0,
-            .image_views = 0,
+            .images = images,
+            .image_views = image_views,
             .extent = { window_size->x, window_size->y },
+            .frame_data = frame_data,
+            .current_frame = 0,
         });
 
         VD_CALLBACK_SET(w[i].on_immediate_destroy, on_window_component_immediate_destroy, renderer);
@@ -745,6 +862,20 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 {
     VD_Renderer *renderer = (VD_Renderer*)usrdata;
     WindowSurfaceComponent *ws = ecs_get(renderer->world, entity, WindowSurfaceComponent);
+
+    vkDeviceWaitIdle(renderer->device);
+
+    for (int i = 0; i < array_len(ws->frame_data); ++i) {
+        vkDestroyFence(renderer->device, ws->frame_data[i].fnc_render_complete, 0);
+        vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_image_available, 0);
+        vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_present_image, 0);
+        vkDestroyCommandPool(renderer->device, ws->frame_data[i].command_pool, 0);
+    }
+
+    for (int i = 0; i < array_len(ws->image_views); ++i) {
+        vkDestroyImageView(renderer->device, ws->image_views[i], 0);
+    }
+
     vkDestroySwapchainKHR(renderer->device, ws->swapchain, 0);
     vkDestroySurfaceKHR(renderer->instance, ws->surface, 0);
 }
@@ -757,4 +888,123 @@ int vd_renderer_deinit(VD_Renderer *renderer)
 #endif
     vkDestroyInstance(renderer->instance, 0);
     return 0;
+}
+
+static void render_window_surface(
+    VD_Renderer *renderer,
+    WindowSurfaceComponent *ws)
+{
+    VD_RendererFrameData *frame_data = &ws->frame_data[ws->current_frame % array_len(ws->frame_data)];
+    ws->current_frame++;
+
+    VD_VK_CHECK(vkWaitForFences(
+        renderer->device,
+        1,
+        &frame_data->fnc_render_complete,
+        VK_TRUE,
+        1000000000));
+
+    VD_VK_CHECK(vkResetFences(
+        renderer->device,
+        1,
+        &frame_data->fnc_render_complete));
+
+    u32 swapchain_image_idx;
+    VD_VK_CHECK(vkAcquireNextImageKHR(
+        renderer->device,
+        ws->swapchain,
+        1000000000,
+        frame_data->sem_image_available,
+        0,
+        &swapchain_image_idx));
+
+    VkCommandBuffer cmd = frame_data->command_buffer;
+    vkResetCommandBuffer(cmd, 0);
+
+    VD_VK_CHECK(vkBeginCommandBuffer(
+        cmd,
+        & (VkCommandBufferBeginInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pNext = 0,
+        }));
+
+    vd_vk_image_transition(
+        cmd,
+        ws->images[swapchain_image_idx],
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_GENERAL);
+
+    float flash = fabsf(sinf(ws->current_frame / 120.0f));
+    VkImageSubresourceRange range = vd_vk_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCmdClearColorImage(
+        cmd,
+        ws->images[swapchain_image_idx],
+        VK_IMAGE_LAYOUT_GENERAL,
+        & (VkClearColorValue) {{  0.0f, 0.0f, flash, 1.0f }},
+        1,
+        &range);
+
+    vd_vk_image_transition(
+        cmd,
+        ws->images[swapchain_image_idx],
+        VK_IMAGE_LAYOUT_GENERAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    VD_VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VD_VK_CHECK(vkQueueSubmit2(
+        renderer->graphics.queue,
+        1,
+        & (VkSubmitInfo2)
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount = 1,
+            .pWaitSemaphoreInfos = & (VkSemaphoreSubmitInfoKHR)
+            {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR,
+                .semaphore = frame_data->sem_image_available,
+                .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+                .value = 1,
+            },
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos = & (VkSemaphoreSubmitInfoKHR)
+            {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR,
+                .semaphore = frame_data->sem_present_image,
+                .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                .value = 1,
+            },
+            .commandBufferInfoCount = 1,
+            .pCommandBufferInfos = & (VkCommandBufferSubmitInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = cmd,
+            }
+        },
+        frame_data->fnc_render_complete));
+
+    vkQueuePresentKHR(
+        renderer->presentation.queue,
+        & (VkPresentInfoKHR)
+        {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pSwapchains = &ws->swapchain,
+            .swapchainCount = 1,
+            .pImageIndices = &swapchain_image_idx,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &frame_data->sem_present_image,
+        });
+}
+
+void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
+{
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+    WindowSurfaceComponent *ws = ecs_field(it, WindowSurfaceComponent, 0);
+
+    for (int i = 0; i < it->count; ++i) {
+        render_window_surface(renderer, &ws[i]);
+    }
 }

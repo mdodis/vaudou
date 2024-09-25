@@ -41,6 +41,8 @@ typedef enum {
 #define VD_STRMAP_SET(m,k,v)         vd__strmap_set(m, k, (void*)v)
 #define VD_STRMAP_GET(m,k,v)         vd__strmap_get(m, k, (void*)v)
 #define VD_STRMAP_DEL(m,k)           (vd__strmap_get_bin(m, k, VD__GET_BIN_FLAGS_SET_UNUSED) != 0)
+#define VD_STRMAP_DEINIT(m)          vd_realloc(VD_STRMAP_HEADER(m)->allocator, (umm)VD_STRMAP_HEADER(m), VD_STRMAP_HEADER(m)->cap_total, 0)
+
 
 void *vd__strmap_init(VD_Allocator *allocator, u32 tsize, u32 cap);
 VD_BinPrefix *vd__strmap_get_bin(void *map, VD_str key, VD__GetBinFlags op);
@@ -95,7 +97,7 @@ VD_INLINE VD_bool vd__strmap_get(void *map, VD_str key, void *value)
 #define strmap_set(m,k,v)   VD_STRMAP_SET(m,k,v)
 
 /**
- * @brief Set a value in the map.
+ * @brief Get a value in the map.
  * @param m The map.
  * @param k The key.
  * @param v The value. Must be a pointer (e.g &value).
@@ -108,6 +110,12 @@ VD_INLINE VD_bool vd__strmap_get(void *map, VD_str key, void *value)
  * @param k The key.
  */
 #define strmap_del(m,k)     VD_STRMAP_DEL(m,k)
-#endif
 
-#endif
+/**
+ * @brief Deinitialize the map.
+ * @param m The map.
+ */
+#define strmap_deinit(m)    VD_STRMAP_DEINIT(m)
+
+#endif // VD_ABBREVIATIONS
+#endif // !VD_STRMAP_H

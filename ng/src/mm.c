@@ -77,7 +77,7 @@ static VD_PROC_ALLOC(vd_entity_alloc)
     info->next = 0;
     info->size = sizeof(VD_EntityAllocationInfo) + newsize;
 
-    MemoryComponent *memory;
+    const MemoryComponent *memory;
     if (ecs_has(world, entity, MemoryComponent)) {
         memory = ecs_get(world, entity, MemoryComponent);
         add_entity_allocation((VD_EntityAllocationInfo*)memory->opaque_info_ptr, info);

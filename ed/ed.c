@@ -1,9 +1,9 @@
 #include "instance.h"
 #include "builtin.h"
 #include "ed.h"
-#include "sdl_window_container.h"
 #define VD_LOG_IMPLEMENTATION
 #include "vd_log.h"
+#include "w_sdl.h"
 
 static struct {
     VD_Instance *instance;
@@ -14,12 +14,13 @@ int main(int argc, char const *argv[]) {
 
     u32 num_extensions;
     const char **extensions;
-    get_required_extensions(&num_extensions, &extensions);
+    vd_w_sdl_get_required_extensions(&num_extensions, &extensions);
     vd_instance_init(G.instance, &(VD_InstanceInitInfo) {
         .vulkan = {
             .num_enabled_extensions                     = num_extensions,
             .enabled_extensions                         = extensions,
-            .get_physical_device_presentation_support   = sdl_get_physical_device_presentation_support_proc,
+            .get_physical_device_presentation_support   = 
+                vd_w_sdl_get_physical_device_presentation_support_proc,
         },
     });
 
@@ -33,7 +34,7 @@ int main(int argc, char const *argv[]) {
     vd_instance_main(G.instance);
 
     vd_instance_deinit(G.instance);
-    sdl_deinit();
+    vd_w_sdl_deinit();
     vd_instance_destroy(G.instance);
     return 0;
 }

@@ -1,5 +1,5 @@
 #define VD_INTERNAL_SOURCE_FILE 1
-#include "deletion_queue.h"
+#include "r/deletion_queue.h"
 
 void vd_deletion_queue_init(VD_DeletionQueue *dq, VD_DeletionQueueInitInfo *info)
 {

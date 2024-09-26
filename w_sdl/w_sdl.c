@@ -1,10 +1,6 @@
-#include "sdl_window_container.h"
-#include <assert.h>
-#include <stdlib.h>
-#include "common.h"
-#include "volk.h"
+#include "w_sdl.h"
+#include "SDL3/SDL.h"
 #include "SDL3/SDL_vulkan.h"
-#include "vd_log.h"
 
 static int Sdl_Initialized = 0;
 static void ensure_sdl_initialized()
@@ -28,7 +24,8 @@ static VD_WINDOW_CREATE_SURFACE_PROC(sdl_create_surface_proc) {
     return surface;
 }
 
-VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(sdl_get_physical_device_presentation_support_proc)
+VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(
+    vd_w_sdl_get_physical_device_presentation_support_proc)
 {
     ensure_sdl_initialized();
     SDL_bool result = SDL_Vulkan_GetPresentationSupport(
@@ -125,7 +122,7 @@ static void PollSDLEvents(ecs_iter_t *it)
     }
 }
 
-void get_required_extensions(u32 *num_extensions, const char ***extensions)
+void vd_w_sdl_get_required_extensions(u32 *num_extensions, const char ***extensions)
 {
     ensure_sdl_initialized();
     SDL_Window *dummy_window = SDL_CreateWindow("fake", 640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
@@ -179,7 +176,7 @@ void SdlImport(ecs_world_t *world)
 
 }
 
-void sdl_deinit()
+void vd_w_sdl_deinit()
 {
     SDL_Quit();
 }

@@ -1,11 +1,14 @@
 #ifndef VD_RENDERER_H
 #define VD_RENDERER_H
 
+#include "volk.h"
+
 #include "common.h"
 #include "array.h"
 #include "builtin.h"
 
-#include "volk.h"
+#include "r/types.h"
+#include "r/deletion_queue.h"
 
 typedef struct VD_Instance  VD_Instance;
 typedef struct VD_Renderer  VD_Renderer;
@@ -25,11 +28,12 @@ typedef struct {
 } VD_RendererInitInfo;
 
 typedef struct {
-    VkCommandPool   command_pool;
-    VkCommandBuffer command_buffer;
-    VkFence         fnc_render_complete;
-    VkSemaphore     sem_image_available;
-    VkSemaphore     sem_present_image;
+    VkCommandPool       command_pool;
+    VkCommandBuffer     command_buffer;
+    VkFence             fnc_render_complete;
+    VkSemaphore         sem_image_available;
+    VkSemaphore         sem_present_image;
+    VD_DeletionQueue    deletion_queue;
 } VD_RendererFrameData;
 
 struct WindowSurfaceComponent {
@@ -41,6 +45,7 @@ struct WindowSurfaceComponent {
     VkExtent2D                      extent;
     VD_ARRAY VD_RendererFrameData   *frame_data;
     int                             current_frame;
+    VD_R_AllocatedImage             color_image;
 };
 
 VD_Renderer *vd_renderer_create();

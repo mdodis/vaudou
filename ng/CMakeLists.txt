@@ -8,8 +8,12 @@ target_include_directories(vdng
 
 target_link_libraries(vdng
     PUBLIC vdlib flecs
-    PRIVATE volk)
+    PRIVATE volk amd_vma)
 
 if (VD_OPTION_ENABLE_VALIDATION_LAYERS)
     target_compile_definitions(vdng PRIVATE VD_ENABLE_VALIDATION_LAYERS)
+endif()
+
+if (VD_OPTION_ENABLE_VULKAN_OBJECT_NAMES)
+    target_compile_definitions(vdng PRIVATE VD_ENABLE_VULKAN_OBJECT_NAMES)
 endif()

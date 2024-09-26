@@ -57,6 +57,13 @@ void vd_vk_image_transition(
     VkImageLayout old_layout,
     VkImageLayout new_layout);
 
+void vd_vk_image_copy(
+    VkCommandBuffer cmd,
+    VkImage src_image,
+    VkImage dst_image,
+    VkExtent2D src_size,
+    VkExtent2D dst_size);
+
 static inline VkImageSubresourceRange vd_vk_subresource_range(VkImageAspectFlags aspect_mask)
 {
     return (VkImageSubresourceRange)
@@ -104,6 +111,55 @@ void vd_vk_image_transition(
                     .layerCount             = VK_REMAINING_ARRAY_LAYERS,
                 },
             },
+        });
+}
+
+void vd_vk_image_copy(
+    VkCommandBuffer cmd,
+    VkImage src_image,
+    VkImage dst_image,
+    VkExtent2D src_size,
+    VkExtent2D dst_size)
+{
+    vkCmdBlitImage2(
+        cmd,
+        & (VkBlitImageInfo2)
+        {
+            .sType                      = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+            .srcImage                   = src_image,
+            .srcImageLayout             = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .dstImage                   = dst_image,
+            .dstImageLayout             = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .filter                     = VK_FILTER_LINEAR,
+            .regionCount                = 1,
+            .pRegions = & (VkImageBlit2)
+            {
+                .sType                  = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+                .srcOffsets =
+                {
+                    {0, 0, 0},
+                    {src_size.width, src_size.height, 1},
+                },
+                .srcSubresource = (VkImageSubresourceLayers)
+                {
+                    .aspectMask         = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel           = 0,
+                    .baseArrayLayer     = 0,
+                    .layerCount         = 1,
+                },
+                .dstOffsets =
+                {
+                    {0, 0, 0},
+                    {dst_size.width, dst_size.height, 1},
+                },
+                .dstSubresource = (VkImageSubresourceLayers)
+                {
+                    .aspectMask         = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel           = 0,
+                    .baseArrayLayer     = 0,
+                    .layerCount         = 1,
+                },
+            }
         });
 }
 

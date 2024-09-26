@@ -24,6 +24,11 @@ struct VD_EntityAllocationInfo {
 struct VD_MM {
 
     struct {
+        Arena        arena;
+        VD_Allocator allocator;
+    } global;
+
+    struct {
         Arena 			arena;
         VD_Allocator 	allocator;
     } frame;
@@ -101,6 +106,10 @@ VD_MM *vd_mm_create()
 
 void vd_mm_init(VD_MM *mm)
 {
+
+    mm->global.arena = arena_new(VD_MEGABYTES(4), vd_memory_get_system_allocator());
+    mm->global.allocator = (VD_Allocator) { .c = &mm->global.arena, .proc_alloc = vd_arena_proc_alloc };
+
     mm->frame.arena = arena_new(VD_MEGABYTES(4), vd_memory_get_system_allocator());
     mm->frame.allocator = (VD_Allocator) { .c = &mm->frame.arena, .proc_alloc = vd_arena_proc_alloc };
 
@@ -118,6 +127,11 @@ void *vd_mm_alloc(VD_MM *mm, VD_AllocationInfo *info)
 {
     switch (info->tag)
     {
+        case VD_MM_GLOBAL:
+        {
+            return arena_alloc_t(&mm->global.arena, info->size);
+        } break;
+
         case VD_MM_FRAME:
         {
             return arena_alloc_t(&mm->frame.arena, info->size);
@@ -135,6 +149,11 @@ void *vd_mm_alloc(VD_MM *mm, VD_AllocationInfo *info)
     }
 
     return 0;
+}
+
+VD_Allocator *vd_mm_get_global_allocator(VD_MM *mm)
+{
+    return &mm->global.allocator;
 }
 
 VD_Arena *vd_mm_get_frame_arena(VD_MM *mm)

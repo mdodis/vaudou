@@ -13,4 +13,12 @@ const u32 VD_MM_Max_Memory_Regions = 16;
 #define VD_VALIDATION_LAYERS 0
 #endif
 
+#ifdef VD_ENABLE_VULKAN_OBJECT_NAMES
+#define VD_VULKAN_OBJECT_NAMES 1
+#endif
+
+#ifndef VD_VULKAN_OBJECT_NAMES
+#define VD_VULKAN_OBJECT_NAMES 0
+#endif
+
 #endif

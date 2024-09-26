@@ -5,6 +5,12 @@
 #define VD_VK_IMPLEMENTATION
 #define VD_VK_CUSTOM_CHECK(x) VD_VK_CHECK(x)
 #include "vd_vk.h"
+#include "vk_mem_alloc.h"
+
+#include "fmt.h"
+#include "vd_log.h"
+#include "flecs.h"
+#include "array.h"
 
 #include "ng_cfg.h"
 #include "instance.h"
@@ -13,24 +19,22 @@
 #include "vulkan_helpers.h"
 #include "cvar.h"
 
-#include "vd_fmt.h"
-#include "vd_log.h"
-#include "flecs.h"
-#include "array.h"
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+
 
 struct VD_Renderer {
     ecs_world_t                         *world;
     VD_Instance                         *app_instance;
     VkInstance                          instance;
-    PFN_vkCreateDebugUtilsMessengerEXT  vkCreateDebugUtilsMessengerEXT;
-    PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT;
 
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;
+
+    VD_DeletionQueue                    deletion_queue;
+
+    VmaAllocator                        allocator;
 
     struct {
         u32                             queue_family_index;
@@ -44,6 +48,12 @@ struct VD_Renderer {
 
 #if VD_VALIDATION_LAYERS
     VkDebugUtilsMessengerEXT            debug_messenger;
+    PFN_vkCreateDebugUtilsMessengerEXT  vkCreateDebugUtilsMessengerEXT;
+    PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT;
+#endif
+
+#if VD_VULKAN_OBJECT_NAMES
+    PFN_vkSetDebugUtilsObjectNameEXT    vkSetDebugUtilsObjectNameEXT;
 #endif
 };
 
@@ -60,6 +70,13 @@ const VkPresentModeKHR Preferred_Present_Modes[] = {
 const char *Validation_Layers[] = {
     "VK_LAYER_KHRONOS_validation",
 };
+
+_inline void name_object(VD_Renderer *renderer, VkDebugUtilsObjectNameInfoEXT *info)
+{
+#if VD_VULKAN_OBJECT_NAMES
+    renderer->vkSetDebugUtilsObjectNameEXT(renderer->device, info);
+#endif
+}
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -192,6 +209,15 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         },
         0,
         &renderer->debug_messenger);
+#endif
+
+#if VD_VULKAN_OBJECT_NAMES
+    renderer->vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)
+        vkGetInstanceProcAddr(
+            renderer->instance,
+            "vkSetDebugUtilsObjectNameEXT");
+
+    assert(renderer->vkSetDebugUtilsObjectNameEXT);
 #endif
 
     // ----PICK PHYSICAL DEVICE---------------------------------------------------------------------
@@ -492,6 +518,48 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         0,
         &renderer->presentation.queue);
 
+// ----VMA------------------------------------------------------------------------------------------
+
+    VD_VK_CHECK(vmaCreateAllocator(
+        & (VmaAllocatorCreateInfo)
+        {
+            .device                     = renderer->device,
+            .physicalDevice             = renderer->physical_device,
+            .instance                   = renderer->instance,
+            .flags                      = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+            .pVulkanFunctions = & (VmaVulkanFunctions) {
+                .vkGetInstanceProcAddr                  = vkGetInstanceProcAddr,
+                .vkGetDeviceProcAddr                    = vkGetDeviceProcAddr,
+                .vkAllocateMemory                       = vkAllocateMemory,
+                .vkBindBufferMemory                     = vkBindBufferMemory,
+                .vkBindImageMemory                      = vkBindImageMemory,
+                .vkCreateBuffer                         = vkCreateBuffer,
+                .vkCreateImage                          = vkCreateImage,
+                .vkDestroyBuffer                        = vkDestroyBuffer,
+                .vkDestroyImage                         = vkDestroyImage,
+                .vkFlushMappedMemoryRanges              = vkFlushMappedMemoryRanges,
+                .vkFreeMemory                           = vkFreeMemory,
+                .vkGetBufferMemoryRequirements          = vkGetBufferMemoryRequirements,
+                .vkGetImageMemoryRequirements           = vkGetImageMemoryRequirements,
+                .vkGetPhysicalDeviceMemoryProperties    = vkGetPhysicalDeviceMemoryProperties,
+                .vkGetPhysicalDeviceProperties          = vkGetPhysicalDeviceProperties,
+                .vkInvalidateMappedMemoryRanges         = vkInvalidateMappedMemoryRanges,
+                .vkMapMemory                            = vkMapMemory,
+                .vkUnmapMemory                          = vkUnmapMemory,
+                .vkCmdCopyBuffer                        = vkCmdCopyBuffer,
+            },
+        },
+        &renderer->allocator));
+
+// ----DELETION QUEUE-------------------------------------------------------------------------------
+    vd_deletion_queue_init(
+        &renderer->deletion_queue,
+        & (VD_DeletionQueueInitInfo)
+        {
+            .allocator = VD_MM_FRAME_ALLOCATOR(),
+            .device = renderer->device,
+        });
+
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
 
@@ -566,8 +634,15 @@ static void rebuild_frame_data(
             },
             0,
             &frame_data[i].sem_present_image));
-    }
 
+        vd_deletion_queue_init(
+            &frame_data[i].deletion_queue,
+            & (VD_DeletionQueueInitInfo)
+            {
+                .allocator = VD_MM_GLOBAL_ALLOCATOR(),
+                .device = renderer->device,
+            });
+    }
     *out_frame_data = frame_data;
 }
 
@@ -581,7 +656,8 @@ static void create_swapchain_image_views_and_framebuffers(
     VkFormat                        *out_format,
     dynarray VkImage                **out_images,
     dynarray VkImageView            **out_image_views,
-    dynarray VD_RendererFrameData   **out_frame_data)
+    dynarray VD_RendererFrameData   **out_frame_data,
+    VD_R_AllocatedImage             *out_color_image)
 {
     u32                 image_count;
     VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
@@ -718,7 +794,7 @@ static void create_swapchain_image_views_and_framebuffers(
             .imageColorSpace        = best_surface_format.colorSpace,
             .imageExtent            = extent,
             .imageArrayLayers       = 1,
-            .imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             .preTransform           = surface_capabilities.currentTransform,
             .compositeAlpha         = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
             .imageSharingMode       = renderer->graphics.queue_family_index == renderer->presentation.queue_family_index
@@ -756,6 +832,21 @@ static void create_swapchain_image_views_and_framebuffers(
             swapchain,
             &num_swapchain_images,
             images));
+
+        for (int i = 0; i < array_len(images); ++i) {
+            name_object(
+                renderer,
+                & (VkDebugUtilsObjectNameInfoEXT)
+                {
+                    .sType              = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                    .objectType         = VK_OBJECT_TYPE_IMAGE,
+                    .objectHandle       = (u64)images[i],
+                    .pObjectName        = vd_snfmt_a(
+                                            VD_MM_FRAME_ALLOCATOR(),
+                                            "Swapchain Image[%{i32}]%{null}",
+                                            i).data,
+                });
+        }
     }
     
 // ----SWAPCHAIN IMAGE VIEWS------------------------------------------------------------------------
@@ -794,6 +885,53 @@ static void create_swapchain_image_views_and_framebuffers(
     array_init(frame_data, &entity_allocator);
     rebuild_frame_data(name, renderer, entity, &frame_data);
 
+// ----COLOR IMAGE----------------------------------------------------------------------------------
+    VD_VK_CHECK(vmaCreateImage(
+        renderer->allocator,
+        & (VkImageCreateInfo)
+        {
+            .sType                  = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType              = VK_IMAGE_TYPE_2D,
+            .mipLevels              = 1,
+            .arrayLayers            = 1,
+            .samples                = VK_SAMPLE_COUNT_1_BIT,
+            .tiling                 = VK_IMAGE_TILING_OPTIMAL,
+            .format                 = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .extent                 = {extent.width, extent.height, 1},
+            .usage                  = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                      VK_IMAGE_USAGE_STORAGE_BIT,                            
+        },
+        & (VmaAllocationCreateInfo)
+        {
+            .requiredFlags          = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            .usage                  = VMA_MEMORY_USAGE_GPU_ONLY,
+        },
+        &out_color_image->image,
+        &out_color_image->allocation,
+        0));
+
+    VD_VK_CHECK(vkCreateImageView(
+        renderer->device,
+        & (VkImageViewCreateInfo)
+        {
+            .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .format             = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .image              = out_color_image->image,
+            .viewType           = VK_IMAGE_VIEW_TYPE_2D,
+            .subresourceRange   =
+            {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            }
+        },
+        0,
+        &out_color_image->view));
+
     *out_swapchain      = swapchain;
     *out_format         = best_surface_format.format;
     *out_images         = images;
@@ -830,6 +968,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
         dynarray VkImage                *images;
         dynarray VkImageView            *image_views;
         dynarray VD_RendererFrameData   *frame_data;
+        VD_R_AllocatedImage             color_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],
@@ -840,7 +979,8 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             &surface_format,
             &images,
             &image_views,
-            &frame_data);
+            &frame_data,
+            &color_image);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,
@@ -851,6 +991,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             .extent = { window_size->x, window_size->y },
             .frame_data = frame_data,
             .current_frame = 0,
+            .color_image = color_image,
         });
 
         VD_CALLBACK_SET(w[i].on_immediate_destroy, on_window_component_immediate_destroy, renderer);
@@ -865,7 +1006,11 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
     vkDeviceWaitIdle(renderer->device);
 
+    vkDestroyImageView(renderer->device, ws->color_image.view, 0);
+    vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
+
     for (int i = 0; i < array_len(ws->frame_data); ++i) {
+        vd_deletion_queue_flush(&ws->frame_data[i].deletion_queue);
         vkDestroyFence(renderer->device, ws->frame_data[i].fnc_render_complete, 0);
         vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_image_available, 0);
         vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_present_image, 0);
@@ -882,6 +1027,8 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
 int vd_renderer_deinit(VD_Renderer *renderer)
 {
+    vd_deletion_queue_flush(&renderer->deletion_queue);
+    vmaDestroyAllocator(renderer->allocator);
     vkDestroyDevice(renderer->device, 0);
 #if VD_VALIDATION_LAYERS
     renderer->vkDestroyDebugUtilsMessengerEXT(renderer->instance, renderer->debug_messenger, 0);
@@ -894,7 +1041,8 @@ static void render_window_surface(
     VD_Renderer *renderer,
     WindowSurfaceComponent *ws)
 {
-    VD_RendererFrameData *frame_data = &ws->frame_data[ws->current_frame % array_len(ws->frame_data)];
+    VD_RendererFrameData *frame_data = 
+        &ws->frame_data[ws->current_frame % array_len(ws->frame_data)];
     ws->current_frame++;
 
     VD_VK_CHECK(vkWaitForFences(
@@ -932,7 +1080,7 @@ static void render_window_surface(
 
     vd_vk_image_transition(
         cmd,
-        ws->images[swapchain_image_idx],
+        ws->color_image.image,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_GENERAL);
 
@@ -940,7 +1088,7 @@ static void render_window_surface(
     VkImageSubresourceRange range = vd_vk_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
     vkCmdClearColorImage(
         cmd,
-        ws->images[swapchain_image_idx],
+        ws->color_image.image,
         VK_IMAGE_LAYOUT_GENERAL,
         & (VkClearColorValue) {{  0.0f, 0.0f, flash, 1.0f }},
         1,
@@ -948,8 +1096,26 @@ static void render_window_surface(
 
     vd_vk_image_transition(
         cmd,
-        ws->images[swapchain_image_idx],
+        ws->color_image.image,
         VK_IMAGE_LAYOUT_GENERAL,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    vd_vk_image_transition(
+        cmd,
+        ws->images[swapchain_image_idx],
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    vd_vk_image_copy(
+        cmd,
+        ws->color_image.image,
+        ws->images[swapchain_image_idx],
+        (VkExtent2D) { ws->extent.width, ws->extent.height },
+        (VkExtent2D) { ws->extent.width, ws->extent.height });
+
+    vd_vk_image_transition(
+        cmd,
+        ws->images[swapchain_image_idx],
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     VD_VK_CHECK(vkEndCommandBuffer(cmd));
@@ -996,6 +1162,8 @@ static void render_window_surface(
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &frame_data->sem_present_image,
         });
+
+    vd_deletion_queue_flush(&frame_data->deletion_queue);
 }
 
 void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)

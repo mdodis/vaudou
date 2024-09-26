@@ -55,6 +55,8 @@ typedef struct {
 #define VD_MM_ALLOC_STRUCT(s, t) VD_MM_ALLOC(sizeof(s), t)
 #define VD_MM_ALLOC_ARRAY(s, n, t) VD_MM_ALLOC(sizeof(s)*n, t)
 
+#define VD_MM_GLOBAL_ALLOCATOR() vd_mm_get_global_allocator(vd_instance_get_mm(vd_instance_get()))
+
 #define VD_MM_FRAME_ALLOCATOR() vd_mm_get_frame_allocator(vd_instance_get_mm(vd_instance_get()))
 #define VD_MM_FRAME_ARENA() vd_mm_get_frame_arena(vd_instance_get_mm(vd_instance_get()))
 #define VD_MM_FRAME_ALLOC(s) VD_MM_ALLOC(s, VD_MM_FRAME)
@@ -67,6 +69,8 @@ typedef struct {
 VD_MM *vd_mm_create();
 void vd_mm_init(VD_MM *mm);
 void *vd_mm_alloc(VD_MM *mm, VD_AllocationInfo *info);
+
+VD_Allocator *vd_mm_get_global_allocator(VD_MM *mm);
 
 VD_Arena *vd_mm_get_frame_arena(VD_MM *mm);
 VD_Allocator *vd_mm_get_frame_allocator(VD_MM *mm);

@@ -1418,7 +1418,6 @@ static int vd_meta__parse_json_object(
         vd_meta__slice_skip_whitespace(&s);
 
         if (vd_meta__slice_expect_char(&s, '}')) {
-            running = 0;
             break;
         }
 

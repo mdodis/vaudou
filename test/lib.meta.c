@@ -229,9 +229,7 @@ UTEST(vd_meta, when_write_vec3_json_then_is_valid)
         &registry,
         (void *)&vec3,
         VD_META_ID(Vector3),
-        0,
-        0,
-        -1,
+        & (VD_Meta_WriteOptions) { .pretty = -1 },
         &out_json,
         &out_json_size);
 
@@ -264,9 +262,7 @@ UTEST(vd_meta, when_write_object_with_intrusive_array_containing_fixed_array_the
         &registry,
         (void *)&pb,
         VD_META_ID(PhoneBook),
-        0,
-        0,
-        -1,
+        & (VD_Meta_WriteOptions) { .pretty = -1 },
         &out_json,
         &out_json_size);
 
@@ -309,9 +305,7 @@ UTEST(vd_meta, when_write_object_with_intrusive_array_of_strings_then_is_valid)
         &registry,
         (void *)&contacts,
         VD_META_ID(Contacts),
-        0,
-        0,
-        0,
+        & (VD_Meta_WriteOptions) {0},
         &out_json,
         &out_json_size);
 

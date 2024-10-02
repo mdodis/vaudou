@@ -83,6 +83,8 @@ enum {
     VD_META_DESCRIPTOR_NOT_FOUND = -1,
     VD_META_INVALID_JSON = -2,
     VD_META_INVALID_TYPE = -3,
+    VD_META_TYPE_NOT_FOUND = -4,
+    VD_META_TYPE_MISMATCH = -5,
 };
 
 typedef struct {
@@ -172,6 +174,31 @@ typedef struct {
     uint64_t            next_id;
 } VD_Meta_Registry;
 
+typedef struct {
+    /** 
+     * Writes the type name of @see VD_META_TYPE_OBJECT so that parsers can validate that they are
+     * reading the correct type.
+     */
+    int                 include_validation;
+    /** The allocator if null, will use the default one. */
+    VD_Meta_AllocProc   *alloc;
+    /** Extra parameter to pass to the allocator. */
+    void                *alloc_ctx;
+    /** Set to -1 to output the minifed version, set to 0 to output a pretty (spaced) version. */
+    int                 pretty;
+} VD_Meta_WriteOptions;
+
+typedef struct {
+    VD_Meta_AllocProc   *alloc;
+    void                *alloc_ctx;
+
+    VD_Meta_AllocProc   *temp_alloc;
+    void                *temp_alloc_ctx;
+
+    VD_Meta_ID          type;
+    VD_Meta_ID          *out_type;
+} VD_Meta_ParseOptions;
+
 /**
  * @brief Initialize the meta registry
  * @param registry The registry to initialize
@@ -194,18 +221,18 @@ VD_Meta_Descriptor *vd_meta_get_descriptor(VD_Meta_Registry *registry, VD_Meta_I
 /**
  * @brief Parse a json string into an object
  * @param registry  The registry to use
+ * @param options   The parse options
  * @param json      The json string
  * @param len       The length of the json string
- * @param type      The returned type of the object
- * @param alloc     The allocator to use, will use the registry's allocator if NULL
- * @return          The object
+ * @param out_obj   The output object
+ * @return          0 on success, < 0 on error
  */
-void *vd_meta_parse_json(
+int vd_meta_parse_json(
     VD_Meta_Registry *registry,
+    VD_Meta_ParseOptions *options,
     const char *json,
     size_t len,
-    VD_Meta_AllocProc *alloc,
-    VD_Meta_ID *type);
+    void **out_obj);
 
 /**
  * @brief Write an object to a json string
@@ -222,9 +249,7 @@ int vd_meta_write_json(
     VD_Meta_Registry *registry,
     void *object,
     VD_Meta_ID type,
-    VD_Meta_AllocProc *alloc,
-    void *alloc_ctx,
-    int pretty,
+    VD_Meta_WriteOptions *options,
     char **out_json,
     size_t *out_len);
 
@@ -283,11 +308,18 @@ typedef struct {
 #define VD_META_ARRAY_CAP(a)                    (a ? (VD_META_ARRAY_HEADER(a))->cap : 0)
 #define VD_META_ARRAY_ADD(a, x, c, cx) \
     (VD_META_ARRAY_CHECK_GROW(a, 1, c, cx), (a)[VD_META_ARRAY_HEADER(a)->len++] = x)
+
+#define VD_META_ARRAY_ADDN(a, n, c, cx) \
+    (VD_META_ARRAY_CHECK_GROW(a, n, c, cx), VD_META_ARRAY_HEADER(a)->len += n)
+
 #define VD_META_ARRAY_GROW(a, b, c, d, dx) \
     ((a) = vd_meta__array_grow(a, sizeof(*(a)), (b), (c), d, dx))
 #define VD_META_ARRAY_CHECK_GROW(a,n, c, cx) \
     ((!(a) || VD_META_ARRAY_LEN(a) + (n) > VD_META_ARRAY_HEADER(a)->cap) \
     ? (VD_META_ARRAY_GROW(a, n, 0, c, cx), 0) : 0)
+
+#define VD_META_ARRAY_FREE(a, al, alc) \
+    (al(a ? VD_META_ARRAY_HEADER(a) : 0, 0, 0, alc), a = 0)
 
 static inline void *vd_meta__array_grow(
     void *a,
@@ -328,6 +360,93 @@ static inline void *vd_meta__array_grow(
     return b;
 }
 
+typedef struct VD_Meta__ArenaBlock VD_Meta__ArenaBlock;
+struct VD_Meta__ArenaBlock 
+{
+    size_t len;
+    size_t cap;
+    VD_Meta__ArenaBlock *next;
+    VD_Meta__ArenaBlock *prev;
+};
+
+typedef struct {
+    VD_Meta__ArenaBlock *curr;
+    VD_Meta_AllocProc *alloc;
+    void *alloc_ctx;
+    size_t block_size;
+} VD_Meta__Arena;
+
+void vd_meta__arena_init(VD_Meta__Arena *arena, VD_Meta_AllocProc *alloc, void *alloc_ctx)
+{
+    arena->alloc = alloc;
+    arena->alloc_ctx = alloc_ctx;
+    arena->curr = 0;
+    arena->block_size = 1024;
+    VD_Meta__ArenaBlock *b = arena->alloc(0, 0, sizeof(VD_Meta__ArenaBlock) + arena->block_size, alloc_ctx);
+    b->len = 0;
+    b->cap = arena->block_size;
+    b->next = 0;
+    b->prev = 0;
+    arena->curr = b;
+}
+
+void *vd_meta__arena_push(VD_Meta__Arena *arena, size_t len)
+{
+    if (arena->block_size < len) {
+        return 0;
+    }
+
+    if (arena->curr->len + len > arena->curr->cap) {
+        VD_Meta__ArenaBlock *b = arena->alloc(
+            0,
+            0,
+            sizeof(VD_Meta__ArenaBlock) + arena->block_size,
+            arena->alloc_ctx);
+
+        b->len = 0;
+        b->cap = arena->block_size;
+        b->next = arena->curr;
+        b->prev = 0;
+        arena->curr->prev = b;
+        arena->curr = b;
+    }
+
+    void *ptr = (char*)arena->curr + sizeof(VD_Meta__ArenaBlock) + arena->curr->len;
+    arena->curr->len += len;
+
+    return ptr;
+}
+
+VD_META_ALLOC_PROC(vd_meta__arena_alloc_proc) {
+    if (newsize == 0) {
+        return 0;
+    }
+
+    VD_Meta__Arena *arena = (VD_Meta__Arena*)c;
+    void *newptr = vd_meta__arena_push(arena, newsize);
+    if (!newptr) {
+        return 0;
+    }
+
+    if (prevsize > 0) {
+        memcpy(newptr, ptr, prevsize);
+    }
+
+    return newptr;
+}
+
+void vd_meta__arena_free(VD_Meta__Arena *arena)
+{
+    VD_Meta__ArenaBlock *b = arena->curr;
+    while (b) {
+        VD_Meta__ArenaBlock *next = b->next;
+        arena->alloc(b, 0, 0, arena->alloc_ctx);
+        b = next;
+    }
+
+    arena->curr = 0;
+}
+
 typedef struct {
     char                *ptr;
     size_t              len;
@@ -354,6 +473,36 @@ void vd_meta__buffer_pushstr(VD_Meta__Buffer *buffer, const char *s)
     vd_meta__buffer_ensure_add(buffer, len);
     memcpy(buffer->ptr + buffer->len, s, len);
     buffer->len += len;
+}
+
+void vd_meta__buffer_push_zeroes(VD_Meta__Buffer *buffer, size_t size)
+{
+    vd_meta__buffer_ensure_add(buffer, size);
+    memset(buffer->ptr + buffer->len, 0, size);
+    buffer->len += size;
+}
+
+size_t vd_meta__buffer_now(VD_Meta__Buffer *buffer)
+{
+    return buffer->len;
+}
+
+void vd_meta__buffer_clear(VD_Meta__Buffer *buffer)
+{
+    buffer->len = 0;
+}
+
+void vd_meta__buffer_free(VD_Meta__Buffer *buffer)
+{
+    buffer->alloc(buffer->ptr, 0, 0, buffer->alloc_ctx);
+    buffer->ptr = 0;
+    buffer->len = 0;
+    buffer->cap = 0;
+}
+
+void *vd_meta__buffer_get(VD_Meta__Buffer *buffer, size_t offset)
+{
+    return buffer->ptr + offset;
 }
 
 void vd_meta__buffer_pushchar(VD_Meta__Buffer *buffer, char c)
@@ -953,32 +1102,502 @@ int vd_meta_write_json(
     VD_Meta_Registry *registry,
     void *object,
     VD_Meta_ID type,
-    VD_Meta_AllocProc *alloc,
-    void *alloc_ctx,
-    int pretty,
+    VD_Meta_WriteOptions *options,
     char **out_json,
     size_t *out_len)
 {
-    if (alloc == 0) {
-        alloc = registry->alloc;
-        alloc_ctx = registry->alloc_ctx;
+    if (options->alloc == 0) {
+        options->alloc = registry->alloc;
+        options->alloc_ctx = registry->alloc_ctx;
     }
 
     VD_Meta__Buffer buffer = {
         .ptr = 0,
         .len = 0,
         .cap = 0,
-        .alloc = alloc,
-        .alloc_ctx = alloc_ctx,
+        .alloc = options->alloc,
+        .alloc_ctx = options->alloc_ctx,
     };
 
-    vd_meta__write_json_object(registry, object, type, &buffer, pretty);
+    vd_meta__write_json_object(registry, object, type, &buffer, options->pretty);
     vd_meta__buffer_terminate(&buffer);
 
     *out_json = buffer.ptr;
     *out_len = buffer.len;
 
     return 0;
+}
+
+typedef struct {
+    const char *str;
+    size_t len;
+    size_t pos;
+} VD_Meta__Slice;
+
+static int vd_meta__slice_at_end(VD_Meta__Slice *slice)
+{
+    if (slice->pos >= slice->len) {
+        return 1;
+    }
+}
+
+static int vd_meta__slice_expect_char(VD_Meta__Slice *slice, char c)
+{
+    if (slice->pos >= slice->len) {
+        return 0;
+    }
+
+    if (slice->str[slice->pos] != c) {
+        return 0;
+    }
+
+    slice->pos++;
+
+    return 1;
+}
+
+static int vd_meta__slice_peek_char(VD_Meta__Slice *slice, char c)
+{
+    if (slice->pos >= slice->len) {
+        return 0;
+    }
+
+    return slice->str[slice->pos] == c;
+}
+
+static char vd_meta__slice_read_char(VD_Meta__Slice *slice)
+{
+    if (slice->pos >= slice->len) {
+        return 0;
+    }
+
+    return slice->str[slice->pos++];
+}
+
+static int vd_meta__slice_skip_whitespace(VD_Meta__Slice *slice)
+{
+    while (slice->pos < slice->len) {
+        if (slice->str[slice->pos] == ' ' ||
+            slice->str[slice->pos] == '\t' ||
+            slice->str[slice->pos] == '\n' ||
+            slice->str[slice->pos] == '\r') {
+            slice->pos++;
+        } else {
+            break;
+        }
+    }
+
+    return 1;
+}
+
+#define VD_META__SLICE_COPY(x) (VD_Meta__Slice)  \
+    {.str = (x)->str + (x)->pos, .len = (x)->len - (x)->pos, .pos = 0} 
+
+#define VD_META__SLICE_SUB(s, l) (VD_Meta__Slice) \
+    {.str = (s)->str + (s)->pos, .len = l, .pos = 0}
+
+#define VD_META__SLICE_APPLY(from, to) do {\
+    (to)->pos += (from)->pos; \
+    } while (0)
+
+static VD_Meta_Field *find_field(VD_Meta_Descriptor *descriptor, const char *name)
+{
+    for (int i = 0; i < descriptor->object.len; ++i) {
+        if (strcmp(descriptor->object.fields[i].name, name) == 0) {
+            return &descriptor->object.fields[i];
+        }
+    }
+
+    return 0;
+}
+
+static int vd_meta__parse_json_string(
+    VD_Meta__Slice *slice,
+    VD_Meta__Buffer *buffer,
+    const char **key)
+{
+    VD_Meta__Slice s = VD_META__SLICE_COPY(slice);
+
+    if (!vd_meta__slice_expect_char(slice, '"')) {
+        return 0;
+    }
+
+    char c = vd_meta__slice_read_char(slice);
+    size_t start = vd_meta__buffer_now(buffer);
+
+    while (c != '\"' && c != 0) {
+        if (c == '\\') {
+            char e = vd_meta__slice_read_char(slice);
+            switch (e) {
+                case '\\': vd_meta__buffer_pushchar(buffer, '\\'); break;
+                case '\"': vd_meta__buffer_pushchar(buffer, '\"'); break;
+                case '/': vd_meta__buffer_pushchar(buffer, '/'); break;
+                case 'b': vd_meta__buffer_pushchar(buffer, '\b'); break;
+                case 'f': vd_meta__buffer_pushchar(buffer, '\f'); break;
+                case 'n': vd_meta__buffer_pushchar(buffer, '\n'); break;
+                case 'r': vd_meta__buffer_pushchar(buffer, '\r'); break;
+                case 't': vd_meta__buffer_pushchar(buffer, '\t'); break;
+                default: vd_meta__buffer_pushchar(buffer, e); break;
+            }
+        } else {
+            vd_meta__buffer_pushchar(buffer, c);
+        }
+
+        c = vd_meta__slice_read_char(slice);
+    }
+
+    if (c == 0) {
+        return 0;
+    }
+
+    vd_meta__buffer_terminate(buffer);
+
+    *key = (char *)vd_meta__buffer_get(buffer, start);
+
+    VD_META__SLICE_APPLY(&s, slice);
+
+    return 1;
+}
+
+static int vd_meta__json_skip_value(VD_Meta__Slice *slice)
+{
+    int num_brackets = 0;
+    int num_braces = 0;
+    while (1) {
+        char c = vd_meta__slice_read_char(slice);
+        if (c == 0) {
+            return 0;
+        }
+
+        if (c == '[') {
+            num_brackets++;
+        } else if (c == ']') {
+            num_brackets--;
+        } else if (c == '{') {
+            num_braces++;
+        } else if (c == '}') {
+            num_braces--;
+        } else if (c == ',' && num_brackets == 0 && num_braces == 0) {
+            return 1;
+        }
+    }
+}
+
+static int vd_meta__parse_json_field(
+    VD_Meta_Registry *registry,
+    VD_Meta_Field *field,
+    VD_Meta__Arena *temp,
+    VD_Meta__Buffer *btemp,
+    VD_Meta__Slice *slice,
+    void *object)
+{
+    VD_Meta__Slice s = VD_META__SLICE_COPY(slice);
+    vd_meta__slice_skip_whitespace(&s);
+
+    if (vd_meta__slice_peek_char(&s, '{')) {
+        int ret = vd_meta__parse_json_object(registry, field->type, temp, btemp, &s, object);
+
+        if (ret < 0) {
+            return ret;
+        }
+
+        VD_META__SLICE_APPLY(&s, slice);
+        return 0;
+    } else if (vd_meta__slice_peek_char(&s, '[')) {
+        // @todo: If field is an array, parse array
+        return -10;
+    } 
+
+    VD_Meta_Descriptor *desc = vd_meta_get_descriptor(registry, field->type);
+
+    switch (desc->type_class) {
+        case VD_META_TYPE_PRIMITIVE: {
+
+            switch (desc->primitive.type) {
+                case VD_META_PRIMITIVE_TYPE_I8: {
+                    char *end;
+                    *(int8_t*)object = strtol(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_U8: {
+                    char *end;
+                    *(uint8_t*)object = strtoul(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_I16: {
+                    char *end;
+                    *(int16_t*)object = strtol(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_U16: {
+                    char *end;
+                    *(uint16_t*)object = strtoul(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_I32: {
+                    char *end;
+                    *(int32_t*)object = strtol(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_U32: {
+                    char *end;
+                    *(uint32_t*)object = strtoul(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_I64: {
+                    char *end;
+                    *(int64_t*)object = strtoll(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_U64: {
+                    char *end;
+                    *(uint64_t*)object = strtoull(s.str, &end, 10);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_F32: {
+                    char *end;
+                    *(float*)object = strtof(s.str, &end);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_F64: {
+                    char *end;
+                    *(double*)object = strtod(s.str, &end);
+                    VD_META__SLICE_APPLY(&s, slice);
+                } break;
+
+                case VD_META_PRIMITIVE_TYPE_CHAR8: {
+                    if (vd_meta__slice_expect_char(&s, '"')) {
+                        *(char*)object = vd_meta__slice_read_char(&s);
+                        if (vd_meta__slice_expect_char(&s, '"')) {
+                            VD_META__SLICE_APPLY(&s, slice);
+                        }
+                    }
+                } break;
+            }
+
+        } break;
+
+        case VD_META_TYPE_STRING: {
+
+        } break;
+    }
+
+    return 0;
+}
+
+static int vd_meta__parse_json_object(
+    VD_Meta_Registry *registry,
+    VD_Meta_ID type,
+    VD_Meta__Arena *temp,
+    VD_Meta__Buffer *btemp,
+    VD_Meta__Slice *slice,
+    void *out_object)
+{
+    VD_Meta_Descriptor *descriptor = vd_meta_get_descriptor(registry, type);
+    if (descriptor == 0) {
+        return VD_META_DESCRIPTOR_NOT_FOUND;
+    }
+
+    VD_Meta__Slice s = VD_META__SLICE_COPY(slice);
+    vd_meta__slice_skip_whitespace(&s);
+
+    if (!vd_meta__slice_expect_char(&s, '{')) {
+        return VD_META_INVALID_JSON;
+    }
+
+    while (1) {
+        vd_meta__slice_skip_whitespace(&s);
+
+        if (vd_meta__slice_expect_char(&s, '}')) {
+            running = 0;
+            break;
+        }
+
+        const char *key;
+        if (!vd_meta__parse_json_string(registry, &s, btemp, &key) < 0) {
+            return VD_META_INVALID_JSON;
+        }
+
+        vd_meta__slice_skip_whitespace(&s);
+
+        if (!vd_meta__slice_expect_char(&s, ':')) {
+            return VD_META_INVALID_JSON;
+        }
+
+        vd_meta__slice_skip_whitespace(&s);
+
+        VD_Meta_Field *field = find_field(descriptor, key);
+
+        if (field == 0) {
+            if (!vd_meta__json_skip_value(&s)) {
+                return VD_META_INVALID_JSON;
+            }
+
+            continue;
+        }
+        
+        int ret = vd_meta__parse_json_field(
+            registry,
+            field,
+            temp,
+            btemp,
+            &s,
+            (char*)out_object + field->offset);
+
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    VD_META__SLICE_APPLY(&s, slice);
+
+    return 0;
+}
+
+static int vd_meta__json_get_object_type(
+    VD_Meta_Registry *registry,
+    VD_Meta_ID expected_type,
+    VD_Meta_ID *actual_type,
+    VD_Meta__Slice *slice,
+    VD_Meta__Arena *temp,
+    VD_Meta__Buffer *btemp)
+{
+    VD_Meta__Slice s = VD_META__SLICE_COPY(slice);
+    vd_meta__slice_skip_whitespace(&s);
+
+    if (!vd_meta__slice_expect_char(&s, '{')) {
+        return VD_META_INVALID_JSON;
+    }
+
+    for (;;) {
+        vd_meta__slice_skip_whitespace(&s);
+
+        if (vd_meta__slice_expect_char(&s, '}')) {
+            break;
+        }
+
+        if (vd_meta__slice_at_end(&s)) {
+            return VD_META_INVALID_JSON;
+        }
+
+        const char *key;
+        vd_meta__parse_json_string(&s, &btemp, &key);
+
+        vd_meta__slice_skip_whitespace(&s);
+        if (!vd_meta__slice_expect_char(&s, ':')) {
+            return VD_META_INVALID_JSON;
+        }
+
+        if (strcmp(key, "--vd-meta-type-name--")) {
+            vd_meta__slice_skip_whitespace(&s);
+
+            const char *type_name;
+            vd_meta__parse_json_string(&s, &btemp, &type_name);
+
+            VD_Meta_ID id = vd_meta_get_id(registry, type_name);
+            if (id.value == 0) {
+                return VD_META_INVALID_TYPE;
+            }
+
+            *actual_type = id;
+            if (id.value != expected_type.value) {
+                return VD_META_TYPE_MISMATCH;
+            }
+
+            return 0;
+        } else {
+
+            vd_meta__slice_skip_whitespace(&s);
+
+            vd_meta__json_skip_value(&s);
+
+            vd_meta__slice_skip_whitespace(&s);
+
+            vd_meta__slice_expect_char(&s, ',');
+        }
+    }
+
+    if (expected_type.value != 0) {
+        *actual_type = expected_type;
+        return 0;
+    }
+
+    return VD_META_TYPE_NOT_FOUND;
+}
+
+int vd_meta_parse_json(
+    VD_Meta_Registry *registry,
+    VD_Meta_ParseOptions *options,
+    const char *json,
+    size_t len,
+    void **out_object)
+{
+    if (options->alloc == 0) {
+        options->alloc = registry->alloc;
+        options->alloc_ctx = registry->alloc_ctx;
+    }
+
+    if (options->temp_alloc == 0) {
+        options->temp_alloc = registry->alloc;
+        options->temp_alloc_ctx = registry->alloc_ctx;
+    }
+
+    VD_Meta__Slice slice = {
+        .str = json,
+        .len = len,
+        .pos = 0,
+    };
+
+    VD_Meta__Arena temp;
+    vd_meta__arena_init(&temp, options->temp_alloc, options->temp_alloc_ctx);
+
+    VD_Meta__Buffer btemp = {
+        .alloc = options->temp_alloc,
+        .alloc_ctx = options->temp_alloc_ctx,
+        .len = 0,
+        .cap = 0,
+    };
+
+    VD_Meta_ID actual_type;
+    int r = vd_meta__json_get_object_type(
+        registry,
+        options->type,
+        &actual_type,
+        &slice,
+        &temp,
+        &btemp);
+
+    vd_meta__buffer_clear(&btemp);
+
+    if (r != 0) {
+        return r;
+    }
+
+    VD_Meta_Descriptor *desc = vd_meta_get_descriptor(registry, actual_type);
+    if (desc == 0) {
+        return VD_META_DESCRIPTOR_NOT_FOUND;
+    }
+
+    *out_object = options->alloc(0, 0, desc->size, options->alloc_ctx);
+    memset(*out_object, 0, desc->size);
+
+    r = vd_meta__parse_json_object(registry, actual_type, &temp, &btemp, &slice, *out_object);
+
+    *options->out_type = actual_type;
+
+    vd_meta__buffer_free(&btemp);
+    vd_meta__arena_free(&temp);
+
+    return r;
 }
 
 int vd_meta_deinit(VD_Meta_Registry *registry)

@@ -315,3 +315,97 @@ UTEST(vd_meta, when_write_object_with_intrusive_array_of_strings_then_is_valid)
     
     vd_meta_deinit(&registry);
 }
+
+UTEST(vd_meta, when_parse_type_hinted_vector3_then_is_valid)
+{
+    VD_Meta_Registry registry = {0};
+    vd_meta_init(&registry);
+    define_types(&registry);
+
+    const char *json = "{\"--vd-meta-type-name--\":\"Vector3\",\"x\":1.0,\"y\":2.0,\"z\":3.0}";
+
+    VD_Meta_ID vec3id = vd_meta_get_id(&registry, "Vector3");
+    VD_Meta_ID out_type;
+    Vector3 *vec3 = NULL;
+    vd_meta_parse_json(
+        &registry,
+        &(VD_Meta_ParseOptions) { .out_type = &out_type },
+        json,
+        strlen(json),
+        &vec3);
+
+    EXPECT_NE(vec3, NULL);
+
+    EXPECT_EQ(out_type.value, vec3id.value);
+
+    EXPECT_EQ(vec3->x, 1.0f);
+    EXPECT_EQ(vec3->y, 2.0f);
+    EXPECT_EQ(vec3->z, 3.0f);
+
+    vd_meta_deinit(&registry);
+}
+
+UTEST(vd_meta, when_parse_type_hinted_unevenly_spaced_vector3_then_is_valid)
+{
+    VD_Meta_Registry registry = {0};
+    vd_meta_init(&registry);
+    define_types(&registry);
+
+    const char *json = "{ \n   \r  \t    \"--vd-meta-type-name--\" \n   \r  \t    : \n   \r  \t    \n\n\"Vector3\"  \n   \r  \t    ,   \n   \r  \t     \"x\"\t\r: \n   \r  \t    1.0, \n   \r  \t    \t\"y\" \n   \r  \t    : \n   \r  \t    2.0, \n   \r  \t    \"z\"    \n   \r  \t      :     \n   \r  \t     3.0}";
+
+    VD_Meta_ID vec3id = vd_meta_get_id(&registry, "Vector3");
+    VD_Meta_ID out_type;
+    Vector3 *vec3 = NULL;
+    vd_meta_parse_json(
+        &registry,
+        &(VD_Meta_ParseOptions) { .out_type = &out_type },
+        json,
+        strlen(json),
+        &vec3);
+
+    EXPECT_NE(vec3, NULL);
+
+    EXPECT_EQ(out_type.value, vec3id.value);
+
+    EXPECT_EQ(vec3->x, 1.0f);
+    EXPECT_EQ(vec3->y, 2.0f);
+    EXPECT_EQ(vec3->z, 3.0f);
+
+    vd_meta_deinit(&registry);
+}
+
+UTEST(vd_meta, when_parse_type_hinted_object_with_intrusive_array_of_fixed_arrays_then_is_valid)
+{
+    VD_Meta_Registry registry = {0};
+    vd_meta_init(&registry);
+    define_types(&registry);
+
+    const char *json = "{\"--vd-meta-type-name--\":\"PhoneBook\",\"addresses\":[{\"--vd-meta-type-name--\":\"PhoneBookAddress\",\"number\":[1,2,3,4,5,6,7,8,9,10]},{\"--vd-meta-type-name--\":\"PhoneBookAddress\",\"number\":[11,12,13,14,15,16,17,18,19,20]}]}";
+    size_t json_len = strlen(json);
+
+    void *out_object = 0;
+    VD_Meta_ID out_type;
+    EXPECT_EQ(vd_meta_parse_json(
+        &registry,
+        &(VD_Meta_ParseOptions) { .out_type = &out_type },
+        json,
+        json_len,
+        &out_object), 0);
+
+    EXPECT_NE(out_object, NULL);
+    EXPECT_EQ(out_type.value, VD_META_ID(PhoneBook).value);
+
+    PhoneBook *pb = (PhoneBook *)out_object;
+
+    EXPECT_EQ(VD_META_ARRAY_LEN(pb->addresses), 2);
+
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(pb->addresses[0].number[i], i + 1);
+    }
+
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(pb->addresses[1].number[i], i + 11);
+    }
+
+    vd_meta_deinit(&registry);
+}

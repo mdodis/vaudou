@@ -16,6 +16,8 @@
 #define VD_LOG_IMPLEMENTATION
 #include "vd_log.h"
 
+#include "tracy/TracyC.h"
+
 VD_Instance *Local_Instance;
 
 struct VD_Instance {
@@ -45,12 +47,20 @@ void OnApplicationQuit(ecs_iter_t *it)
 
 void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 {
+    TracyCZoneN(Initialize_All, "Initialize::All", 1);
+
 // ----MM-------------------------------------------------------------------------------------------
+    TracyCZoneN(Initialize_MM, "Initialize::MM", 1);
+    
     Local_Instance = instance;
     instance->mm = vd_mm_create();
     vd_mm_init(instance->mm);
 
+    TracyCZoneEnd(Initialize_MM);
+
 // ----LOG------------------------------------------------------------------------------------------
+    TracyCZoneN(Initialize_Log, "Initialize::Log", 1);
+
     str exec_path = vd_get_exec_path(vd_mm_get_frame_arena(instance->mm));
     str log_path = vd_snfmt(
             vd_mm_get_frame_arena(
@@ -67,11 +77,17 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 
     VD_LOG("Instance", ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin Log");
 
+    TracyCZoneEnd(Initialize_Log);
 // ----CVS------------------------------------------------------------------------------------------
+    TracyCZoneN(Initialize_CVS, "Initialize::CVS", 1);
+
     instance->cvs = vd_cvs_create();
     vd_cvs_init(instance->cvs);
 
+    TracyCZoneEnd(Initialize_CVS);
 // ----FLECS----------------------------------------------------------------------------------------
+    TracyCZoneN(Initialize_Flecs, "Initialize::Flecs", 1);
+
     ecs_os_set_api_defaults();
     ecs_os_api_t os_api = ecs_os_get_api();
     os_api.log_ = vd_ecs_log;
@@ -83,7 +99,10 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
 
     ecs_singleton_set(instance->world, Application, { .instance = instance });
 
+    TracyCZoneEnd(Initialize_Flecs);
 // ----RENDERER--------------------------------------------------------------------------------------
+    TracyCZoneN(Initialize_Renderer, "Initialize::Renderer", 1);
+
     instance->r = vd_renderer_create();
     vd_renderer_init(instance->r, &(VD_RendererInitInfo) {
         .instance   = instance,
@@ -96,6 +115,8 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
         },
     });
 
+    TracyCZoneEnd(Initialize_Renderer);
+
     ecs_observer(instance->world, {
         .events = {AppQuitEvent},
         .query.terms = {{ ecs_id(Application) }},
@@ -104,6 +125,8 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
         });
 
     vd_mm_end_frame(instance->mm);
+
+    TracyCZoneEnd(Initialize_All);
 }
 
 void vd_instance_main(VD_Instance *instance)

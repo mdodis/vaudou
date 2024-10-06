@@ -26,6 +26,8 @@
 #include "default_shaders.h"
 #include "shdc.h"
 
+#include "tracy/TracyC.h"
+
 static vd_shdc_log_error(const char *what, const char *msg, const char *extmsg);
 
 struct VD_Renderer {
@@ -237,7 +239,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     assert(renderer->vkSetDebugUtilsObjectNameEXT);
 #endif
 
-    // ----PICK PHYSICAL DEVICE---------------------------------------------------------------------
+// ----PICK PHYSICAL DEVICE-------------------------------------------------------------------------
+    TracyCZoneN(Pick_Physical_Device, "Pick Physical Device", 1);
+
     dynarray VkPhysicalDevice *physical_devices = 0;
     array_init(physical_devices, VD_MM_FRAME_ALLOCATOR());
     {
@@ -468,7 +472,11 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     renderer->physical_device = physical_devices[best_device];
 
-    // ----CREATE LOGICAL DEVICE--------------------------------------------------------------------
+    TracyCZoneEnd(Pick_Physical_Device);
+
+// ----CREATE LOGICAL DEVICE------------------------------------------------------------------------
+    TracyCZoneN(Create_Logical_Device, "Create Logical Device", 1);
+
     VD_VK_CHECK(vkCreateDevice(
         renderer->physical_device,
         & (VkDeviceCreateInfo) 
@@ -535,6 +543,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         0,
         &renderer->presentation.queue);
 
+    TracyCZoneEnd(Create_Logical_Device);
 // ----VMA------------------------------------------------------------------------------------------
 
     VD_VK_CHECK(vmaCreateAllocator(
@@ -581,7 +590,11 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
+        TracyCZoneN(Create_Pipeline_Opaque, "Create Pipeline Opaque", 1);
+
         VkShaderModule vertex, fragment;
+
+        TracyCZoneN(Compile_Shaders, "Compile Shaders", 1);
         {
             void *code;
             size_t code_size;
@@ -609,6 +622,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
             VD_VK_CHECK(vd_vk_create_shader_module(renderer->device, code, code_size, &fragment));
         }
+        TracyCZoneEnd(Compile_Shaders);
 
         VD_VK_CHECK(vkCreatePipelineLayout(
             renderer->device,
@@ -654,6 +668,8 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         vkDestroyShaderModule(renderer->device, vertex, 0);
         vkDestroyShaderModule(renderer->device, fragment, 0);
+
+        TracyCZoneEnd(Create_Pipeline_Opaque);
     }
 
 // ----DELETION QUEUE-------------------------------------------------------------------------------

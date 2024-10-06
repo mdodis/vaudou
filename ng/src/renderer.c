@@ -23,6 +23,10 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "default_shaders.h"
+#include "shdc.h"
+
+static vd_shdc_log_error(const char *what, const char *msg, const char *extmsg);
 
 struct VD_Renderer {
     ecs_world_t                         *world;
@@ -45,6 +49,19 @@ struct VD_Renderer {
         u32                             queue_family_index;
         VkQueue                         queue;
     } presentation;
+
+    VkFormat                            color_image_format;
+
+    struct {
+        struct {
+            VkPipeline          pipeline;
+            VkShaderModule      svert;
+            VkShaderModule      sfrag;
+            VkPipelineLayout    layout;
+        } pbropaque;
+    } pipelines;
+
+    VD_SHDC                             *shdc;
 
 #if VD_VALIDATION_LAYERS
     VkDebugUtilsMessengerEXT            debug_messenger;
@@ -550,6 +567,94 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             },
         },
         &renderer->allocator));
+// ----SHDC-----------------------------------------------------------------------------------------
+    renderer->shdc = vd_shdc_create();
+    vd_shdc_init(
+        renderer->shdc,
+        & (VD_SHDC_InitInfo)
+        {
+            .cb_error = vd_shdc_log_error,
+        });
+
+// ----DEFAULT FORMATS------------------------------------------------------------------------------
+    renderer->color_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+// ----DEFAULT PIPELINES----------------------------------------------------------------------------
+    {
+        VkShaderModule vertex, fragment;
+        {
+            void *code;
+            size_t code_size;
+            vd_shdc_compile(
+                renderer->shdc,
+                VD_PBROPAQUE_VERT,
+                VD_SHDC_SHADER_STAGE_VERTEX,
+                VD_MM_FRAME_ALLOCATOR(),
+                &code,
+                &code_size);
+
+            VD_VK_CHECK(vd_vk_create_shader_module(renderer->device, code, code_size, &vertex));
+        }
+
+        {
+            void *code;
+            size_t code_size;
+            vd_shdc_compile(
+                renderer->shdc,
+                VD_PBROPAQUE_FRAG,
+                VD_SHDC_SHADER_STAGE_FRAGMENT,
+                VD_MM_FRAME_ALLOCATOR(),
+                &code,
+                &code_size);
+
+            VD_VK_CHECK(vd_vk_create_shader_module(renderer->device, code, code_size, &fragment));
+        }
+
+        VD_VK_CHECK(vkCreatePipelineLayout(
+            renderer->device,
+            & (VkPipelineLayoutCreateInfo)
+            {
+                .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .setLayoutCount         = 0,
+                .pushConstantRangeCount = 0,
+            },
+            0,
+            &renderer->pipelines.pbropaque.layout));
+
+        VD_VK_CHECK(vd_vk_build_pipeline(
+            renderer->device,
+            & (VD_VK_PipelineBuildInfo)
+            {
+                .num_stages = 2,
+                .stages = (VkPipelineShaderStageCreateInfo[])
+                {
+                    {
+                        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                        .module = vertex,
+                        .pName = "main",
+                    },
+                    {
+                        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                        .module = fragment,
+                        .pName = "main",
+                    },
+                },
+                .layout = renderer->pipelines.pbropaque.layout,
+                .depth_test.on = 0,
+                .blend.on = 0,
+                .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+                .polygon_mode = VK_POLYGON_MODE_FILL,
+                .cull_mode = VK_CULL_MODE_NONE,
+                .front_face = VK_FRONT_FACE_CLOCKWISE,
+                .multisample.on = 0,
+                .color_format = renderer->color_image_format,
+                .depth_format = VK_FORMAT_UNDEFINED,
+            },
+            &renderer->pipelines.pbropaque.pipeline));
+
+        vkDestroyShaderModule(renderer->device, vertex, 0);
+        vkDestroyShaderModule(renderer->device, fragment, 0);
+    }
 
 // ----DELETION QUEUE-------------------------------------------------------------------------------
     vd_deletion_queue_init(
@@ -896,7 +1001,7 @@ static void create_swapchain_image_views_and_framebuffers(
             .arrayLayers            = 1,
             .samples                = VK_SAMPLE_COUNT_1_BIT,
             .tiling                 = VK_IMAGE_TILING_OPTIMAL,
-            .format                 = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format                 = renderer->color_image_format,
             .extent                 = {extent.width, extent.height, 1},
             .usage                  = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -911,6 +1016,16 @@ static void create_swapchain_image_views_and_framebuffers(
         &out_color_image->image,
         &out_color_image->allocation,
         0));
+
+    name_object(
+        renderer,
+        & (VkDebugUtilsObjectNameInfoEXT)
+        {
+            .sType              = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+            .objectType         = VK_OBJECT_TYPE_IMAGE,
+            .objectHandle       = (u64)out_color_image->image,
+            .pObjectName        = "Color Image",
+        });
 
     VD_VK_CHECK(vkCreateImageView(
         renderer->device,
@@ -1029,6 +1144,7 @@ int vd_renderer_deinit(VD_Renderer *renderer)
 {
     vd_deletion_queue_flush(&renderer->deletion_queue);
     vmaDestroyAllocator(renderer->allocator);
+    vd_shdc_deinit(renderer->shdc);
     vkDestroyDevice(renderer->device, 0);
 #if VD_VALIDATION_LAYERS
     renderer->vkDestroyDebugUtilsMessengerEXT(renderer->instance, renderer->debug_messenger, 0);
@@ -1084,13 +1200,12 @@ static void render_window_surface(
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_GENERAL);
 
-    float flash = fabsf(sinf(ws->current_frame / 120.0f));
     VkImageSubresourceRange range = vd_vk_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
     vkCmdClearColorImage(
         cmd,
         ws->color_image.image,
         VK_IMAGE_LAYOUT_GENERAL,
-        & (VkClearColorValue) {{  0.0f, 0.0f, flash, 1.0f }},
+        & (VkClearColorValue) {{  0.2f, 0.2f, 0.2f, 1.0f }},
         1,
         &range);
 
@@ -1098,6 +1213,67 @@ static void render_window_surface(
         cmd,
         ws->color_image.image,
         VK_IMAGE_LAYOUT_GENERAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Draw Triangle
+    {
+        vkCmdBeginRendering(
+            cmd,
+            & (VkRenderingInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = { .offset = { 0, 0 }, .extent = ws->extent },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = (VkRenderingAttachmentInfo[])
+                {
+                    {
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                        .imageView = ws->color_image.view,
+                        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    }
+                },
+            });
+
+        vkCmdBindPipeline(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            renderer->pipelines.pbropaque.pipeline);
+
+        vkCmdSetViewport(
+            cmd,
+            0,
+            1,
+            & (VkViewport)
+            {
+                .x = 0,
+                .y = 0,
+                .width = ws->extent.width,
+                .height = ws->extent.height,
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f
+            });
+
+        vkCmdSetScissor(
+            cmd,
+            0,
+            1,
+            & (VkRect2D)
+            {
+                .offset = { 0, 0 },
+                .extent = ws->extent,
+            });
+
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+
+        vkCmdEndRendering(cmd);
+    }
+
+
+    vd_vk_image_transition(
+        cmd,
+        ws->color_image.image,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vd_vk_image_transition(
         cmd,
@@ -1175,4 +1351,9 @@ void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
     for (int i = 0; i < it->count; ++i) {
         render_window_surface(renderer, &ws[i]);
     }
+}
+
+static vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)
+{
+    VD_LOG_FMT("SHDC", "%{cstr}: %{cstr} %{cstr}", what, msg, extmsg);
 }

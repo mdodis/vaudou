@@ -85,11 +85,11 @@ int vd_shdc_compile(
     glslang_program_SPIRV_generate(program, shdc_stage_to_glslang_stage(stage));
 
     *result_size_bytes = glslang_program_SPIRV_get_size(program) * sizeof(u32);
-    *result = alloc->proc_alloc(
+    *result = (void*)alloc->proc_alloc(
         0,
         0,
         *result_size_bytes,
-        0);
+        alloc->c);
 
     glslang_program_SPIRV_get(program, (u32*)*result);
 

@@ -102,6 +102,12 @@ void vd_vk_image_copy(
     VkExtent2D src_size,
     VkExtent2D dst_size);
 
+VkResult vd_vk_create_shader_module(
+    VkDevice device,
+    void *code,
+    size_t code_size, 
+    VkShaderModule *out_module);
+
 static inline VkImageSubresourceRange vd_vk_subresource_range(VkImageAspectFlags aspect_mask)
 {
     return (VkImageSubresourceRange)
@@ -161,12 +167,13 @@ VkResult vd_vk_build_pipeline(
         multisample.alphaToOneEnable = VK_FALSE;
     }
 
+    color_blend_attachments.colorWriteMask = 
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+
     if (info->blend.on) {
-        color_blend_attachments.colorWriteMask = 
-            VK_COLOR_COMPONENT_R_BIT |
-            VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
         color_blend_attachments.blendEnable = VK_TRUE;
     } else {
         color_blend_attachments.blendEnable = VK_FALSE;
@@ -330,6 +337,24 @@ void vd_vk_image_copy(
                 },
             }
         });
+}
+
+VkResult vd_vk_create_shader_module(
+    VkDevice device,
+    void *code,
+    size_t code_size, 
+    VkShaderModule *out_module)
+{
+    return vkCreateShaderModule(
+        device,
+        &(VkShaderModuleCreateInfo)
+        {
+            .sType      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize   = code_size,
+            .pCode      = code,
+        },
+        0,
+        out_module);
 }
 
 #endif // VD_VK_IMPLEMENTATION

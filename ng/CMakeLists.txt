@@ -12,7 +12,7 @@ target_include_directories(vdng
 
 target_link_libraries(vdng
     PUBLIC vdlib flecs
-    PRIVATE volk amd_vma glslang)
+    PRIVATE vdshdc volk amd_vma glslang)
 
 if (VD_OPTION_ENABLE_VALIDATION_LAYERS)
     target_compile_definitions(vdng PRIVATE VD_ENABLE_VALIDATION_LAYERS)

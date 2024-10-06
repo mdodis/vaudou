@@ -1,7 +1,6 @@
 #ifndef VD_ARENA_H
 #define VD_ARENA_H
-#include "common.h"
-#include "allocator.h"
+#include "vd_common.h"
 #include <string.h>
 #include "vd_atomic.h"
 

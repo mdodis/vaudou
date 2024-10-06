@@ -1,7 +1,6 @@
 #ifndef VD_ARRAY_H
 #define VD_ARRAY_H
-#include "common.h"
-#include "allocator.h"
+#include "vd_common.h"
 #include <string.h>
 
 typedef struct {

@@ -1,6 +1,6 @@
 #ifndef VD_W_SDL_H
 #define VD_W_SDL_H
-#include "common.h"
+#include "vd_common.h"
 #include "builtin.h"
 
 #include "instance.h"

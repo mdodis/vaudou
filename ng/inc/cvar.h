@@ -1,7 +1,7 @@
 #ifndef VD_CVAR_H
 #define VD_CVAR_H
 
-#include "common.h"
+#include "vd_common.h"
 #include "delegate.h"
 #include "str.h"
 

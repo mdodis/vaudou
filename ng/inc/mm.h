@@ -1,7 +1,6 @@
 #ifndef VD_MM_H
 #define VD_MM_H
-#include "common.h"
-#include "allocator.h"
+#include "vd_common.h"
 #include "arena.h"
 
 /**

@@ -1,7 +1,7 @@
 #ifndef VD_STR_H
 #define VD_STR_H
 
-#include "common.h"
+#include "vd_common.h"
 
 /**
  * @brief An immutable string slice.

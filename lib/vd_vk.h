@@ -44,6 +44,36 @@
 #include <vulkan/vulkan.h>
 #endif
 
+typedef struct {
+    VkPipelineShaderStageCreateInfo             *stages;
+    int                                         num_stages;
+    VkPrimitiveTopology                         topology;
+    VkPolygonMode                               polygon_mode;
+    VkCullModeFlags                             cull_mode;
+    VkFrontFace                                 front_face;
+
+    struct {
+        int                                     on;
+    } multisample;
+
+    struct {
+        int                                     on;
+    } blend;
+
+    struct {
+        int                                     on;
+    } depth_test;
+
+    VkFormat                                    color_format;
+    VkFormat                                    depth_format;
+    VkPipelineLayout                            layout;
+} VD_VK_PipelineBuildInfo;
+
+VkResult vd_vk_build_pipeline(
+    VkDevice device,
+    VD_VK_PipelineBuildInfo *info,
+    VkPipeline *out_pipeline);
+
 /**
  * @brief Transition an image from one layout to another
  * @param cmd        The command buffer
@@ -57,6 +87,14 @@ void vd_vk_image_transition(
     VkImageLayout old_layout,
     VkImageLayout new_layout);
 
+/**
+ * @brief Copy an image to another
+ * @param cmd       The command buffer
+ * @param src_image The source image
+ * @param dst_image The destination image
+ * @param src_size  The source size
+ * @param dst_size  The destination size
+ */
 void vd_vk_image_copy(
     VkCommandBuffer cmd,
     VkImage src_image,
@@ -77,6 +115,137 @@ static inline VkImageSubresourceRange vd_vk_subresource_range(VkImageAspectFlags
 }
 
 #ifdef VD_VK_IMPLEMENTATION
+
+VkResult vd_vk_build_pipeline(
+    VkDevice device,
+    VD_VK_PipelineBuildInfo *info,
+    VkPipeline *out_pipeline)
+{
+    VkPipelineInputAssemblyStateCreateInfo      input_assembly = {0};
+    VkPipelineRasterizationStateCreateInfo      rasterization = {0};
+    VkPipelineColorBlendAttachmentState         color_blend_attachments = {0};
+    VkPipelineMultisampleStateCreateInfo        multisample = {0};
+    VkPipelineDepthStencilStateCreateInfo       depth_stencil = {0};
+
+    for (int i = 0; i < info->num_stages; ++i) {
+        info->stages[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    }
+
+    input_assembly.sType  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    rasterization.sType   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    multisample.sType     = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    depth_stencil.sType   = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+
+    input_assembly.topology = info->topology;
+    input_assembly.primitiveRestartEnable = VK_FALSE;
+
+    rasterization.polygonMode = info->polygon_mode;
+    rasterization.lineWidth = 1.0f;
+
+    rasterization.cullMode = info->cull_mode;
+    rasterization.frontFace = info->front_face;
+
+    if (info->multisample.on) {
+        multisample.sampleShadingEnable = VK_TRUE;
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisample.minSampleShading = 1.0f;
+        multisample.pSampleMask = 0;
+        multisample.alphaToCoverageEnable = VK_FALSE;
+        multisample.alphaToOneEnable = VK_FALSE;
+    } else {
+        multisample.sampleShadingEnable = VK_FALSE;
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisample.minSampleShading = 1.0f;
+        multisample.pSampleMask = 0;
+        multisample.alphaToCoverageEnable = VK_FALSE;
+        multisample.alphaToOneEnable = VK_FALSE;
+    }
+
+    if (info->blend.on) {
+        color_blend_attachments.colorWriteMask = 
+            VK_COLOR_COMPONENT_R_BIT |
+            VK_COLOR_COMPONENT_G_BIT |
+            VK_COLOR_COMPONENT_B_BIT |
+            VK_COLOR_COMPONENT_A_BIT;
+        color_blend_attachments.blendEnable = VK_TRUE;
+    } else {
+        color_blend_attachments.blendEnable = VK_FALSE;
+    }
+
+    if (info->depth_test.on) {
+        depth_stencil.depthTestEnable = VK_TRUE;
+        depth_stencil.depthWriteEnable = VK_TRUE;
+        depth_stencil.depthCompareOp = VK_COMPARE_OP_NEVER;
+        depth_stencil.depthBoundsTestEnable = VK_FALSE;
+        depth_stencil.stencilTestEnable = VK_FALSE;
+        depth_stencil.minDepthBounds = 0.0f;
+        depth_stencil.maxDepthBounds = 1.0f;
+    } else {
+        depth_stencil.depthTestEnable = VK_FALSE;
+        depth_stencil.depthWriteEnable = VK_FALSE;
+        depth_stencil.depthCompareOp = VK_COMPARE_OP_NEVER;
+        depth_stencil.depthBoundsTestEnable = VK_FALSE;
+        depth_stencil.stencilTestEnable = VK_FALSE;
+        depth_stencil.minDepthBounds = 0.0f;
+        depth_stencil.maxDepthBounds = 1.0f;
+    }
+
+    VkPipelineViewportStateCreateInfo viewport = {
+        .sType          = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount  = 1,
+        .scissorCount   = 1,
+    };
+
+    VkPipelineColorBlendStateCreateInfo color_blend = {
+        .sType          = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments   = &color_blend_attachments,
+        .logicOpEnable  = VK_FALSE,
+        .logicOp        = VK_LOGIC_OP_COPY,
+    };
+
+    return vkCreateGraphicsPipelines(
+        device,
+        VK_NULL_HANDLE,
+        1,
+        &(VkGraphicsPipelineCreateInfo)
+        {
+            .sType                  = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .stageCount             = info->num_stages,
+            .pStages                = info->stages,
+            .pVertexInputState      = & (VkPipelineVertexInputStateCreateInfo)
+            {
+                .sType              = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            },
+            .pInputAssemblyState    = &input_assembly,
+            .pViewportState         = &viewport,
+            .pRasterizationState    = &rasterization,
+            .pMultisampleState      = &multisample,
+            .pColorBlendState       = &color_blend,
+            .pDepthStencilState     = &depth_stencil,
+            .layout                 = info->layout,
+            .pDynamicState          = & (VkPipelineDynamicStateCreateInfo)
+            {
+                .sType              = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+                .dynamicStateCount  = 2,
+                .pDynamicStates     = (VkDynamicState[])
+                {
+                    VK_DYNAMIC_STATE_VIEWPORT,
+                    VK_DYNAMIC_STATE_SCISSOR,
+                },
+            },
+            .pNext = & (VkPipelineRenderingCreateInfo)
+            {
+                .sType                      = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                .colorAttachmentCount       = 1,
+                .pColorAttachmentFormats    = &info->color_format,
+                .depthAttachmentFormat      = info->depth_format,
+            }
+        },
+        0,
+        out_pipeline);
+}
+
 void vd_vk_image_transition(
     VkCommandBuffer cmd,
     VkImage image,

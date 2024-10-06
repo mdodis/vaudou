@@ -1,6 +1,6 @@
 #ifndef VD_DELEGATE_H
 #define VD_DELEGATE_H
-#include "common.h"
+#include "vd_common.h"
 #include "array.h"
 
 #define VD_HOOK(name) name##Hook

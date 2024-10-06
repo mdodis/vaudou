@@ -1,6 +1,6 @@
 #ifndef VD_IWINDOW_SUBSYSTEM_H
 #define VD_IWINDOW_SUBSYSTEM_H
-#include "common.h"
+#include "vd_common.h"
 #include "subsystem.h"
 
 #define VD_IWINDOW_SUBSYSTEM_GET_WINDOW_PLATFORM_HANDLE_PROC(name) int name(void **phandle, void *usrdata)

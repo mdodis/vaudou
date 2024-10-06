@@ -7,3 +7,4 @@ target_link_libraries(vdshdc
 
 
 target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang-15.0.0/glslang/Include)
+target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang-15.0.0/glslang/Public)

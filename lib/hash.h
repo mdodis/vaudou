@@ -1,7 +1,7 @@
 #ifndef VD_HASH_H
 #define VD_HASH_H
 
-#include "common.h"
+#include "vd_common.h"
 
 VD_INLINE u64 vd_hash(const void *data, u64 len, u32 seed)
 {

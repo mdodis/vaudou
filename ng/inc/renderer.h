@@ -3,7 +3,7 @@
 
 #include "volk.h"
 
-#include "common.h"
+#include "vd_common.h"
 #include "array.h"
 #include "builtin.h"
 

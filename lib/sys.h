@@ -1,7 +1,6 @@
 #ifndef VD_SYSTEM_H
 #define VD_SYSTEM_H
 #include "str.h"
-#include "allocator.h"
 #include "arena.h"
 #include "vd_sysutil.h"
 

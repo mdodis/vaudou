@@ -1,6 +1,6 @@
 #ifndef VD_BUILTIN_H
 #define VD_BUILTIN_H
-#include "common.h"
+#include "vd_common.h"
 
 #include "delegate.h"
 

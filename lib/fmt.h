@@ -1,6 +1,6 @@
 #ifndef VD_FMT_INTEGRATION_H
 #define VD_FMT_INTEGRATION_H
-#include "common.h"
+#include "vd_common.h"
 #include "vd_fmt.h"
 #include "arena.h"
 #include "str.h"

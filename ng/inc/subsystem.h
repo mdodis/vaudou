@@ -1,6 +1,6 @@
 #ifndef VD_SUBSYSTEM_H
 #define VD_SUBSYSTEM_H
-#include "common.h"
+#include "vd_common.h"
 #include "interface.h"
 #include "array.h"
 

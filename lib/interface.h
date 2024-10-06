@@ -1,6 +1,6 @@
 #ifndef VD_INTERFACE_H
 #define VD_INTERFACE_H
-#include "common.h"
+#include "vd_common.h"
 
 typedef struct VD__tag_InterfaceID {
 	u32 id;

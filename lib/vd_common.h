@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 /* ----HOST COMPILER----------------------------------------------------------------------------- */
 #if defined(__GNUC__) || defined(__clang__)
@@ -144,7 +145,7 @@ typedef bool VD_bool;
 #endif
 
 /**
- * @brief Indicates this function should be not be exposed as a symbol.
+ * @brief Indicates this function should not be exposed as a symbol.
  */
 #define VD_INTERNAL static
 
@@ -169,6 +170,47 @@ typedef bool VD_bool;
 #define VD_MEGABYTES(x) VD_KILOBYTES(x) * 1024
 
 #define VD_ARRAY_COUNT(s) (sizeof(s) / sizeof(*s))
+
+/* ----ALLOCATORS-------------------------------------------------------------------------------- */
+#define VD_PROC_ALLOC(name) umm name(umm ptr, size_t prevsize, size_t newsize, void *c)
+typedef VD_PROC_ALLOC(VD_ProcAlloc);
+
+typedef struct {
+    VD_ProcAlloc *proc_alloc;
+    void         *c;
+} VD_Allocator;
+
+VD_INTERNAL VD_PROC_ALLOC(sys_alloc)
+{
+    VD_UNUSED(c);
+
+    if (newsize == 0) {
+        free((void*)ptr);
+        return 0;
+    } else {
+        return (umm)realloc((void*)ptr, newsize);
+    }
+}
+
+static VD_Allocator System_Allocator = {
+    .proc_alloc = sys_alloc,
+    .c = 0,
+};
+
+static VD_INLINE VD_Allocator *vd_memory_get_system_allocator(void)
+{
+    return &System_Allocator;
+}
+
+VD_INLINE umm vd_realloc(VD_Allocator *allocator, umm ptr, size_t prevsize, size_t newsize)
+{
+    return allocator->proc_alloc(ptr, prevsize, newsize, allocator->c);
+}
+
+VD_INLINE umm vd_free(VD_Allocator *allocator, umm ptr, size_t size)
+{
+    return allocator->proc_alloc(ptr, size, 0, allocator->c);
+}
 
 /* ----LOCAL ABBREVIATIONS----------------------------------------------------------------------- */
 #if VD_ABBREVIATIONS

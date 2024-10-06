@@ -31,6 +31,12 @@
 // struct
 // 
 //
+// TODO
+// - Add support for hashmaps
+// - Make VD_Meta_Registry serializable
+// - Add array support
+// -    Array as a struct
+// -    Array as a pointer + len in a field
 #if defined(__INTELLISENSE__) || defined(__CLANGD__)
 #define VD_META_IMPLEMENTATION
 #endif

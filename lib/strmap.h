@@ -4,8 +4,7 @@
 // A map of string slices to values. The map is implemented as a hash table.
 #ifndef VD_STRMAP_H
 #define VD_STRMAP_H
-#include "common.h"
-#include "allocator.h"
+#include "vd_common.h"
 #include "str.h"
 #include <string.h>
 

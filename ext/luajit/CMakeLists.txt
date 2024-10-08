@@ -6,6 +6,11 @@ if (WIN32)
     "${CMAKE_CURRENT_SOURCE_DIR}/win64/luajit.lib"
     "${CMAKE_CURRENT_SOURCE_DIR}/win64/lua51.lib"
     )
+
+    add_executable(luajit::cli IMPORTED GLOBAL)
+    set_target_properties(luajit::cli PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/win64/luajit.exe"
+    )
     
     set(LUAJIT_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/win64" CACHE PATH "LuaJIT include directory")
 

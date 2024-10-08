@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 project(vaudou LANGUAGES C CXX)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 11)
 
 include(FetchContent)
@@ -25,6 +24,9 @@ endif()
 
 # Add the external libraries
 add_subdirectory("ext")
+
+set(VD_SCRIPTS_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts)
+
 add_subdirectory("lib")
 add_subdirectory("shdc")
 add_subdirectory("ng")

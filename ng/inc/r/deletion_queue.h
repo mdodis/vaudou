@@ -2,22 +2,35 @@
 #define VD_DELETION_QUEUE_H
 
 #include "array.h"
-
+#include "r/types.h"
 #include "volk.h"
 
 typedef struct {
-    VkDevice                device;
-    VD_ARRAY VkImage        *images;
-    VD_Allocator            allocator;
+    VkPipeline          pipeline;
+    VkPipelineLayout    layout;
+} VD_DeletionQueuePipelineAndLayout;
+
+typedef struct {
+    struct VD_Renderer                          *renderer;
+    VD_ARRAY VkImage                            *images;
+    VD_ARRAY VD_DeletionQueuePipelineAndLayout  *pipeline_and_layouts;
+    VD_ARRAY VD_R_GPUMesh                       *meshes;
+    VD_Allocator                                allocator;
 } VD_DeletionQueue;
 
 typedef struct {
-    VkDevice            device;
+    struct VD_Renderer  *renderer;
     VD_Allocator        *allocator;
 } VD_DeletionQueueInitInfo;
 
 void vd_deletion_queue_init(VD_DeletionQueue *dq, VD_DeletionQueueInitInfo *info);
+void vd_deletion_queue_push_pipeline_and_layout(
+    VD_DeletionQueue *dq,
+    VkPipeline pipeline,
+    VkPipelineLayout layout);
 void vd_deletion_queue_push_vkimage(VD_DeletionQueue *dq, VkImage image);
+void vd_deletion_queue_push_gpumesh(VD_DeletionQueue *dq, VD_R_GPUMesh *mesh);
+
 void vd_deletion_queue_flush(VD_DeletionQueue *dq);
 void vd_deletion_queue_deinit(VD_DeletionQueue *dq);
 

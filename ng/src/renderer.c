@@ -1,3 +1,8 @@
+// renderer.c
+// 
+// TODO
+// - Move renderer deletion queue to VD_MM_GLOBAL
+// - Move window deletion queue to VD_MM_ENTITY
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "renderer.h"
 
@@ -28,7 +33,7 @@
 
 #include "tracy/TracyC.h"
 
-static vd_shdc_log_error(const char *what, const char *msg, const char *extmsg);
+static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg);
 
 struct VD_Renderer {
     ecs_world_t                         *world;
@@ -62,6 +67,16 @@ struct VD_Renderer {
             VkPipelineLayout    layout;
         } pbropaque;
     } pipelines;
+
+    struct {
+        VkFence                 fence;
+        VkCommandBuffer         command_buffer;
+        VkCommandPool           command_pool;
+    } imm;
+
+    struct {
+        VD_R_GPUMesh            quad;
+    } meshes;
 
     VD_SHDC                             *shdc;
 
@@ -412,7 +427,8 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             ? present_queues[0]
             : 0;
 
-        if (q_device_graphics_queue_family == q_device_present_queue_family && (array_len(present_queues) > 1))
+        if (q_device_graphics_queue_family == q_device_present_queue_family &&
+            (array_len(present_queues) > 1))
         {
             q_device_present_queue_family = present_queues[1];
         }
@@ -576,6 +592,16 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             },
         },
         &renderer->allocator));
+
+// ----DELETION QUEUE-------------------------------------------------------------------------------
+    vd_deletion_queue_init(
+        &renderer->deletion_queue,
+        & (VD_DeletionQueueInitInfo)
+        {
+            .allocator = VD_MM_GLOBAL_ALLOCATOR(),
+            .renderer = renderer,
+        });
+
 // ----SHDC-----------------------------------------------------------------------------------------
     renderer->shdc = vd_shdc_create();
     vd_shdc_init(
@@ -587,6 +613,90 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
 // ----DEFAULT FORMATS------------------------------------------------------------------------------
     renderer->color_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+// ----IMMEDIATE QUEUE------------------------------------------------------------------------------
+
+    VD_VK_CHECK(vkCreateCommandPool(
+        renderer->device,
+        &(VkCommandPoolCreateInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .queueFamilyIndex = renderer->graphics.queue_family_index,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        },
+        0,
+        &renderer->imm.command_pool));
+
+    name_object(renderer, &(VkDebugUtilsObjectNameInfoEXT)
+    {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_COMMAND_POOL,
+        .objectHandle = (u64)renderer->imm.command_pool,
+        .pObjectName = "Immediate Command Pool",
+    });
+
+    VD_VK_CHECK(vkAllocateCommandBuffers(
+        renderer->device,
+        & (VkCommandBufferAllocateInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = renderer->imm.command_pool,
+            .commandBufferCount = 1,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        },
+        &renderer->imm.command_buffer));
+
+    name_object(renderer, &(VkDebugUtilsObjectNameInfoEXT)
+    {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_COMMAND_BUFFER,
+        .objectHandle = (u64)renderer->imm.command_buffer,
+        .pObjectName = "Immediate Command Buffer",
+    });
+
+    VD_VK_CHECK(vkCreateFence(
+        renderer->device,
+        & (VkFenceCreateInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+        },
+        0,
+        &renderer->imm.fence));
+
+// ----DEFAULT MESHES-------------------------------------------------------------------------------
+    {
+        VD_R_Vertex vertices[4] =
+        {
+            {
+                .position   = {0.5,-0.5, 0},
+                .color      = {0,0,0,1},
+            },
+            {
+                .position   = {0.5,0.5, 0},
+                .color      = {0.5,0.5,0.5 ,1},
+            },
+            {
+                .position   = {-0.5,-0.5, 0},
+                .color      = {1,0, 0,1},
+            },
+            {
+                .position   = {-0.5,0.5, 0},
+                .color      = {0,1, 0,1},
+            },
+        };
+
+        u32 indices[6] = {0,1,2, 2,1,3};
+
+        renderer->meshes.quad = vd_renderer_upload_mesh(
+            renderer,
+            indices,
+            VD_ARRAY_COUNT(indices),
+            vertices,
+            VD_ARRAY_COUNT(vertices));
+
+        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.quad);
+    }
 
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
@@ -630,7 +740,13 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             {
                 .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .setLayoutCount         = 0,
-                .pushConstantRangeCount = 0,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = & (VkPushConstantRange)
+                {
+                    .offset = 0,
+                    .size = sizeof(VD_R_GPUPushConstants),
+                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                },
             },
             0,
             &renderer->pipelines.pbropaque.layout));
@@ -669,17 +785,13 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         vkDestroyShaderModule(renderer->device, vertex, 0);
         vkDestroyShaderModule(renderer->device, fragment, 0);
 
+        vd_deletion_queue_push_pipeline_and_layout(
+            &renderer->deletion_queue,
+            renderer->pipelines.pbropaque.pipeline,
+            renderer->pipelines.pbropaque.layout);
+
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
-
-// ----DELETION QUEUE-------------------------------------------------------------------------------
-    vd_deletion_queue_init(
-        &renderer->deletion_queue,
-        & (VD_DeletionQueueInitInfo)
-        {
-            .allocator = VD_MM_FRAME_ALLOCATOR(),
-            .device = renderer->device,
-        });
 
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
@@ -761,7 +873,7 @@ static void rebuild_frame_data(
             & (VD_DeletionQueueInitInfo)
             {
                 .allocator = VD_MM_GLOBAL_ALLOCATOR(),
-                .device = renderer->device,
+                .renderer = renderer,
             });
     }
     *out_frame_data = frame_data;
@@ -1158,6 +1270,9 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
 int vd_renderer_deinit(VD_Renderer *renderer)
 {
+    vkDestroyCommandPool(renderer->device, renderer->imm.command_pool, 0);
+    vkDestroyFence(renderer->device, renderer->imm.fence, 0);
+
     vd_deletion_queue_flush(&renderer->deletion_queue);
     vmaDestroyAllocator(renderer->allocator);
     vd_shdc_deinit(renderer->shdc);
@@ -1280,7 +1395,22 @@ static void render_window_surface(
                 .extent = ws->extent,
             });
 
-        vkCmdDraw(cmd, 3, 1, 0, 0);
+        VD_R_GPUPushConstants constants = {
+            .vertex_buffer = renderer->meshes.quad.vertex_buffer_address,
+            .world_matrix = GLM_MAT4_IDENTITY_INIT,
+        };
+
+        vkCmdPushConstants(
+            cmd,
+            renderer->pipelines.pbropaque.layout,
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(constants),
+            &constants);
+
+        vkCmdBindIndexBuffer(cmd, renderer->meshes.quad.index.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);
     }
@@ -1358,6 +1488,116 @@ static void render_window_surface(
     vd_deletion_queue_flush(&frame_data->deletion_queue);
 }
 
+VD_R_AllocatedBuffer vd_renderer_create_buffer(
+    VD_Renderer *renderer,
+    size_t size,
+    VkBufferUsageFlags flags,
+    VmaMemoryUsage usage)
+{
+    VD_R_AllocatedBuffer result;
+
+    VD_VK_CHECK(vmaCreateBuffer(
+        renderer->allocator,
+        & (VkBufferCreateInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .usage = flags,
+            .size = size,
+        },
+        & (VmaAllocationCreateInfo)
+        {
+            .usage = usage,
+            .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        },
+        &result.buffer,
+        &result.allocation,
+        &result.info));
+
+    return result;
+}
+
+VkDevice vd_renderer_get_device(VD_Renderer *renderer)
+{
+    return renderer->device;
+}
+
+void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+{
+    vmaDestroyBuffer(renderer->allocator, buffer->buffer, buffer->allocation);
+}
+
+VD_R_GPUMesh vd_renderer_upload_mesh(
+    VD_Renderer *renderer,
+    u32 *indices,
+    size_t num_indices,
+    VD_R_Vertex *vertices,
+    size_t num_vertices)
+{
+    size_t bytes_indices = sizeof(*indices) * num_indices;
+    size_t bytes_vertices = sizeof(*vertices) * num_vertices;
+
+    VD_R_GPUMesh result;
+
+    result.index = vd_renderer_create_buffer(
+        renderer,
+        bytes_indices,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    result.vertex = vd_renderer_create_buffer(
+        renderer,
+        bytes_vertices,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    result.vertex_buffer_address = vkGetBufferDeviceAddress(
+        renderer->device,
+        & (VkBufferDeviceAddressInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+            .buffer = result.vertex.buffer,
+        });
+
+
+    VD_R_AllocatedBuffer staging_buffer = vd_renderer_create_buffer(
+        renderer,
+        bytes_indices + bytes_vertices,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void *data;
+    vmaMapMemory(renderer->allocator, staging_buffer.allocation, &data);
+    memcpy(data, vertices, bytes_vertices);
+    memcpy((char*)data + bytes_vertices, indices, bytes_indices);
+    vmaUnmapMemory(renderer->allocator, staging_buffer.allocation);
+
+    VkCommandBuffer cmd = vd_renderer_imm_begin(renderer);
+
+    vkCmdCopyBuffer(
+        cmd,
+        staging_buffer.buffer,
+        result.vertex.buffer,
+        1,
+        & (VkBufferCopy) { .srcOffset = 0, .dstOffset = 0, .size = bytes_vertices });
+
+
+    vkCmdCopyBuffer(
+        cmd,
+        staging_buffer.buffer,
+        result.index.buffer,
+        1,
+        &(VkBufferCopy) {.srcOffset = bytes_vertices, .dstOffset = 0, .size = bytes_indices });
+
+    vd_renderer_imm_end(renderer);
+
+    vd_renderer_destroy_buffer(renderer, &staging_buffer);
+
+    return result;
+}
+
 void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
 {
     const Application *app = ecs_singleton_get(it->world, Application);
@@ -1369,7 +1609,45 @@ void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
     }
 }
 
-static vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)
+VkCommandBuffer vd_renderer_imm_begin(VD_Renderer *renderer)
+{
+    VD_VK_CHECK(vkResetFences(renderer->device, 1, &renderer->imm.fence));
+    VD_VK_CHECK(vkResetCommandBuffer(renderer->imm.command_buffer, 0));
+
+    VD_VK_CHECK(vkBeginCommandBuffer(
+        renderer->imm.command_buffer,
+        & (VkCommandBufferBeginInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        }));
+    
+    return renderer->imm.command_buffer;
+}
+
+void vd_renderer_imm_end(VD_Renderer *renderer)
+{
+    vkEndCommandBuffer(renderer->imm.command_buffer);
+
+    VD_VK_CHECK(vkQueueSubmit2(
+        renderer->graphics.queue,
+        1,
+        &(VkSubmitInfo2)
+        {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .commandBufferInfoCount = 1,
+            .pCommandBufferInfos = & (VkCommandBufferSubmitInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = renderer->imm.command_buffer,
+            },
+        },
+        renderer->imm.fence));
+
+    VD_VK_CHECK(vkWaitForFences(renderer->device, 1, &renderer->imm.fence, 1, 99999999));
+}
+
+static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)
 {
     VD_LOG_FMT("SHDC", "%{cstr}: %{cstr} %{cstr}", what, msg, extmsg);
 }

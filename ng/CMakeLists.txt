@@ -8,7 +8,7 @@ add_library(vdng STATIC ${SOURCES} ${HEADERS})
 
 target_include_directories(vdng
     PUBLIC inc 
-    PRIVATE src)
+    PRIVATE src .)
 
 target_link_libraries(vdng
     PUBLIC vdlib flecs
@@ -22,9 +22,6 @@ if (VD_OPTION_ENABLE_VULKAN_OBJECT_NAMES)
     target_compile_definitions(vdng PRIVATE VD_ENABLE_VULKAN_OBJECT_NAMES)
 endif()
 
-add_custom_command(TARGET vdng POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/shd ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shd)
-
 add_custom_command(
     OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vdng
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/inc ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vdng
@@ -35,3 +32,28 @@ add_custom_command(
 add_custom_target(vdng_public_headers ALL DEPENDS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vdng)
 
 add_dependencies(vdng vdng_public_headers)
+
+
+file(GLOB PRECOMP_SHADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shd/*.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shd/*.frag
+)
+
+# get_target_property(LUA_EXECUTABLE luajit::cli LOCATION)
+foreach(input_file ${PRECOMP_SHADERS})
+    get_filename_component(file_basename ${input_file} NAME_WE)
+    get_filename_component(file_ext ${input_file} EXT)
+    
+
+    set(output_file ${CMAKE_CURRENT_SOURCE_DIR}/shd/generated/${file_basename}${file_ext})
+
+    add_custom_command(
+        OUTPUT  ${output_file}
+        COMMAND ${CMAKE_COMMAND} -E echo "Converting ${input_file}"
+        COMMAND luajit::cli ${VD_SCRIPTS_DIRECTORY}/cv_text_to_literal.lua ${input_file} ${output_file}
+        DEPENDS ${input_file}
+        COMMENT "Generating C string from ${input_file}"
+    )
+
+    target_sources(vdng PRIVATE ${output_file})
+endforeach()

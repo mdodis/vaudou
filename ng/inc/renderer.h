@@ -52,6 +52,26 @@ VD_Renderer *vd_renderer_create();
 int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info);
 int vd_renderer_deinit(VD_Renderer *renderer);
 
+VkCommandBuffer vd_renderer_imm_begin(VD_Renderer *renderer);
+void vd_renderer_imm_end(VD_Renderer *renderer);
+
+VD_R_AllocatedBuffer vd_renderer_create_buffer(
+    VD_Renderer *renderer,
+    size_t size,
+    VkBufferUsageFlags flags,
+    VmaMemoryUsage usage);
+
+VkDevice vd_renderer_get_device(VD_Renderer *renderer);
+
+void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
+
+VD_R_GPUMesh vd_renderer_upload_mesh(
+    VD_Renderer *renderer,
+    u32 *indices,
+    size_t num_indices,
+    VD_R_Vertex *vertices,
+    size_t num_vertices);
+
 extern void RendererOnWindowComponentSet(ecs_iter_t *it);
 extern void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it);
 

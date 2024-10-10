@@ -18,4 +18,12 @@ if (WIN32)
         target_link_libraries(${tgt} PRIVATE luajit)
         target_include_directories(${tgt} PRIVATE ${LUAJIT_INCLUDE})
     endfunction()
+elseif (UNIX)
+
+    add_library(luajit STATIC IMPORTED GLOBAL)
+    set_target_properties(luajit PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/osx-arm64/libluajit.a"
+    )
+
+    target_include_directories(luajit INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/osx-arm64/)
 endif()

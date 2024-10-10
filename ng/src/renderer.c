@@ -4,6 +4,7 @@
 // - Move renderer deletion queue to VD_MM_GLOBAL
 // - Move window deletion queue to VD_MM_ENTITY
 #define VD_INTERNAL_SOURCE_FILE 1
+#include "vd_common.h"
 #include "renderer.h"
 
 #define VD_VK_OPTION_INCLUDE_VULKAN_CUSTOM
@@ -127,6 +128,18 @@ VD_Renderer *vd_renderer_create()
     return (VD_Renderer*)calloc(1, sizeof(VD_Renderer));
 }
 
+static const char *Num_Extra_Instance_Extensions[] = {
+    // Debug Utils
+#if VD_VALIDATION_LAYERS
+    VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
+
+    // MoltenVK
+#if VD_PLATFORM_MACOS
+    "VK_KHR_portability_enumeration",
+#endif
+};
+
 int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 {
     renderer->app_instance = info->instance;
@@ -179,16 +192,19 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     enabled_extensions = VD_MM_FRAME_ALLOC_ARRAY(
         const char*,
-        info->vulkan.num_enabled_extensions + 1);
+        info->vulkan.num_enabled_extensions + ARRAY_COUNT(Num_Extra_Instance_Extensions));
 
     for (int i = 0; i < info->vulkan.num_enabled_extensions; ++i) {
         enabled_extensions[num_enabled_extensions++] = info->vulkan.enabled_extensions[i];
     }
 
-#if VD_VALIDATION_LAYERS
-    enabled_extensions[num_enabled_extensions++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-#endif
-
+    for (int i = 0; i < ARRAY_COUNT(Num_Extra_Instance_Extensions); ++i) {
+        VD_LOG_FMT(
+            "Renderer",
+            "Enabling instance extension: %{cstr}",
+            Num_Extra_Instance_Extensions[i]);
+        enabled_extensions[num_enabled_extensions++] = Num_Extra_Instance_Extensions[i];
+    }
     VD_VK_CHECK(vkCreateInstance(
         &(VkInstanceCreateInfo)
         {
@@ -206,6 +222,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             .enabledExtensionCount = num_enabled_extensions,
             .ppEnabledLayerNames = enabled_layers,
             .enabledLayerCount = num_enabled_layers,
+#if VD_PLATFORM_MACOS
+            .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
         },
         0,
         &renderer->instance));
@@ -493,6 +512,13 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 // ----CREATE LOGICAL DEVICE------------------------------------------------------------------------
     TracyCZoneN(Create_Logical_Device, "Create Logical Device", 1);
 
+    static const char *create_logical_device_extensions[] = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+#if VD_PLATFORM_MACOS
+        "VK_KHR_portability_subset"
+#endif
+    };
+
     VD_VK_CHECK(vkCreateDevice(
         renderer->physical_device,
         & (VkDeviceCreateInfo) 
@@ -534,11 +560,8 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
                     },
                 },
             },
-            .enabledExtensionCount          = 1,
-            .ppEnabledExtensionNames        = (const char *[])
-            {
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            },
+            .enabledExtensionCount          = VD_ARRAY_COUNT(create_logical_device_extensions),
+            .ppEnabledExtensionNames        = create_logical_device_extensions,
         },
         0,
         &renderer->device));

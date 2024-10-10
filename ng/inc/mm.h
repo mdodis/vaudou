@@ -25,6 +25,7 @@ typedef enum {
 } VD_MM_Tag;
 
 typedef struct VD_MM VD_MM;
+typedef struct ecs_iter_t ecs_iter_t;
 
 typedef struct {
     /* Input */
@@ -80,8 +81,8 @@ void vd_mm_get_stats(VD_MM *mm, VD_MM_Stats *stats);
 
 void vd_mm_deinit(VD_MM *mm);
 
-extern void GarbageCollectTask(struct ecs_iter_t *t);
-extern void FreeFrameAllocationSystem(struct ecs_iter_t *t);
+extern void GarbageCollectTask(ecs_iter_t *t);
+extern void FreeFrameAllocationSystem(ecs_iter_t *t);
 
 
 #endif

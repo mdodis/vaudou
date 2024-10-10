@@ -69,31 +69,13 @@ VD_INLINE void vd_arena_free(VD_Arena *arena)
     vd_free(arena->allocator, arena->data, arena->end - arena->data);
 }
 
-VD_INLINE VD_PROC_ALLOC(vd_arena_proc_alloc)
-{
-    VD_Arena *arena = (VD_Arena*)c;
-    if (newsize == 0) {
-        return 0;
-    }
-
-    umm nptr = (umm)vd_arena_alloc(arena, newsize, 8);
-    if (nptr == 0) {
-        return 0;
-    }
-
-    if (ptr != 0) {
-        memcpy((void*)nptr, (void*)ptr, prevsize);
-    }
-
-    return nptr;
-}
-
 VD_INLINE void vd_arena_get_stats(VD_Arena *arena, u64 *used, u64 *total)
 {
     *used = arena->begin - arena->data;
     *total = arena->end - arena->data;
 }
 
+VD_PROC_ALLOC(vd_arena_proc_alloc);
 
 #if VD_ABBREVIATIONS
 #define Arena VD_Arena

@@ -153,7 +153,6 @@ int vd_sysutil_dir_next(VD_SysUtilDir *dir, VD_SysUtilFileInfo *nfo)
 #if defined(_WIN32)
 static LARGE_INTEGER The_Counter;
 static bool _timespec_win32_has_counter = false;
-#endif
 
 static void vd_sysutil__qfrequency() {
 	if (!_timespec_win32_has_counter) {
@@ -161,6 +160,7 @@ static void vd_sysutil__qfrequency() {
 		_timespec_win32_has_counter = true;
 	}
 }
+#endif
 
 VD_SysUtilTimespec vd_sysutil_time_now()
 {

@@ -74,7 +74,7 @@
 #define MEMORY_BARRIER() do {__sync_synchronize(); asm volatile("mfence": : :"memory"); } while(0)
 #endif
 
-_inline int32_t vd_atomic_compare_and_swap32(volatile int32_t *ptr, int32_t new_value, int32_t expected) {
+static inline int32_t vd_atomic_compare_and_swap32(volatile int32_t *ptr, int32_t new_value, int32_t expected) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedCompareExchange(ptr, new_value, expected);
 #else
@@ -82,7 +82,7 @@ _inline int32_t vd_atomic_compare_and_swap32(volatile int32_t *ptr, int32_t new_
 #endif
 }
 
-_inline uint32_t vd_atomic_compare_and_swapu32(volatile uint32_t *ptr, uint32_t new_value, uint32_t expected) {
+static inline uint32_t vd_atomic_compare_and_swapu32(volatile uint32_t *ptr, uint32_t new_value, uint32_t expected) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedCompareExchange(ptr, new_value, expected);
 #else
@@ -90,7 +90,7 @@ _inline uint32_t vd_atomic_compare_and_swapu32(volatile uint32_t *ptr, uint32_t 
 #endif
 }
 
-_inline int64_t vd_atomic_compare_and_swap64(volatile int64_t *ptr, int64_t new_value, int64_t expected) {
+static inline int64_t vd_atomic_compare_and_swap64(volatile int64_t *ptr, int64_t new_value, int64_t expected) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return InterlockedCompareExchange64(ptr, new_value, expected);
 #else
@@ -98,7 +98,7 @@ _inline int64_t vd_atomic_compare_and_swap64(volatile int64_t *ptr, int64_t new_
 #endif
 }
 
-_inline void *vd_atomic_compare_and_swap_ptr(void *volatile *ptr, void *new_value, void *expected) {
+static inline void *vd_atomic_compare_and_swap_ptr(void *volatile *ptr, void *new_value, void *expected) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedCompareExchangePointer(ptr, new_value, expected);
 #else
@@ -106,7 +106,7 @@ _inline void *vd_atomic_compare_and_swap_ptr(void *volatile *ptr, void *new_valu
 #endif
 }
 
-_inline void *vd_atomic_load_ptr(void *volatile ptr)
+static inline void *vd_atomic_load_ptr(void *volatile ptr)
 {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedCompareExchangePointer(ptr, 0, 0);
@@ -114,7 +114,7 @@ _inline void *vd_atomic_load_ptr(void *volatile ptr)
 #endif
 }
 
-_inline int32_t vd_atomic_inc_and_fetch32(volatile int32_t *addend) {
+static inline int32_t vd_atomic_inc_and_fetch32(volatile int32_t *addend) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedIncrement(addend);
 #else
@@ -122,7 +122,7 @@ _inline int32_t vd_atomic_inc_and_fetch32(volatile int32_t *addend) {
 #endif
 }
 
-_inline uint32_t vd_atomic_inc_and_fetchu32(volatile uint32_t *addend) {
+static inline uint32_t vd_atomic_inc_and_fetchu32(volatile uint32_t *addend) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedIncrement(addend);
 #else
@@ -130,7 +130,7 @@ _inline uint32_t vd_atomic_inc_and_fetchu32(volatile uint32_t *addend) {
 #endif
 }
 
-_inline int32_t vd_atomic_add_and_fetch32(volatile int32_t *addend, int32_t value) {
+static inline int32_t vd_atomic_add_and_fetch32(volatile int32_t *addend, int32_t value) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _interlockedadd(addend, value);
 #else
@@ -138,19 +138,19 @@ _inline int32_t vd_atomic_add_and_fetch32(volatile int32_t *addend, int32_t valu
 #endif
 }
 
-_inline int32_t vd_atomic_add_and_fetch64(volatile int64_t *addend, int64_t value) {
+static inline int32_t vd_atomic_add_and_fetch64(volatile int64_t *addend, int64_t value) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return InterlockedAdd64((volatile long long *)addend, value);
 #else
-#error "No platform support!"
+    return __sync_add_and_fetch(addend, value);
 #endif
 }
 
-_inline int64_t vd_atomic_fetch_and_add64(volatile int64_t *addend, int64_t value) {
+static inline int64_t vd_atomic_fetch_and_add64(volatile int64_t *addend, int64_t value) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedExchangeAdd64(addend, value);
 #else
-#error "No platform support!"
+    return __sync_fetch_and_add(addend, value);
 #endif
 }
 

@@ -124,8 +124,6 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
         .callback_ctx = instance,
         });
 
-    vd_mm_end_frame(instance->mm);
-
     TracyCZoneEnd(Initialize_All);
 }
 
@@ -137,7 +135,6 @@ void vd_instance_main(VD_Instance *instance)
 
     while (!instance->should_close) {
         ecs_progress(instance->world, 0.0f);
-        vd_mm_end_frame(instance->mm);
     }
     
 }

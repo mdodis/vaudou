@@ -18,7 +18,7 @@ VD_str vd_str_from_cstr(const char *in_cstr)
     return result;
 }
 
-bool vd_str_eq(VD_str a, VD_str b)
+VD_bool vd_str_eq(VD_str a, VD_str b)
 {
     if (a.len != b.len) {
         return false;

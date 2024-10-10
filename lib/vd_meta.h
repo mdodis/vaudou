@@ -45,6 +45,7 @@
 #define VD_META_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef VD_META_OPTION_DEFINE_DEFAULT_TYPES
 #define VD_META_OPTION_DEFINE_DEFAULT_TYPES 1
@@ -326,6 +327,7 @@ extern VD_META_DECL_TYPE(CString);
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 static inline VD_META_ALLOC_PROC(vd_meta__default_alloc_proc)
 {
@@ -1421,6 +1423,16 @@ void *vd_meta_field_array_get(
     void *array = (void*)((char*)object + field->offset);
     return (char*)array + i * field_desc->size;
 }
+
+static int vd_meta__parse_json_object(
+    VD_Meta_Registry *registry,
+    VD_Meta_ID type,
+    VD_Meta__Arena *temp,
+    VD_Meta__Buffer *btemp,
+    VD_Meta__Slice *slice,
+    VD_Meta_AllocProc *alloc,
+    void *alloc_ctx,
+    void *out_object);
 
 static int vd_meta__parse_json_descriptor(
     VD_Meta_Registry *registry,

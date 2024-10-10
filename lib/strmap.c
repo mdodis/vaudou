@@ -94,7 +94,7 @@ VD_BinPrefix *vd__strmap_get_bin(void *map, VD_str key, VD__GetBinFlags op)
                 if (existing_bin->key_rest) {
                     vd_free(
                         VD_STRMAP_HEADER(map)->allocator, 
-                        existing_bin->key_rest, 
+                        (umm)existing_bin->key_rest, 
                         sizeof(existing_bin->key_prefix) - existing_bin->key_len);
                 }
             }

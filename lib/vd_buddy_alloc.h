@@ -4,6 +4,8 @@
 #define VD_BUDDY_ALLOC_IMPLEMENTATION
 #endif
 
+#include <stddef.h>
+
 #define VD_BUDDY_ALLOCATION_PROC(name) void *name(void *ptr, size_t prevsize, size_t newsize, void *usrdata)
 typedef VD_BUDDY_ALLOCATION_PROC(VD_BuddyAllocationProc);
 

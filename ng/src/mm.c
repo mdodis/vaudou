@@ -233,7 +233,7 @@ void GarbageCollectTask(ecs_iter_t *t)
     mm->entity.free_list.next = 0;
 }
 
-void FreeFrameAllocationSystem(struct ecs_iter_t *t)
+void FreeFrameAllocationSystem(ecs_iter_t *t)
 {
     VD_MM *mm = vd_instance_get_mm(vd_instance_get());
     vd_mm_end_frame(mm);

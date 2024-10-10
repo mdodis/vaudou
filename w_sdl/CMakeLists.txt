@@ -8,3 +8,10 @@ target_include_directories(vdw_sdl PUBLIC ".")
 target_link_libraries(vdw_sdl 
     PUBLIC vdng vdlib flecs
     PRIVATE volk SDL3::SDL3)
+if (APPLE)
+    find_package(Vulkan REQUIRED)
+    target_link_libraries(vdw_sdl
+        PRIVATE Vulkan::Vulkan)
+endif()
+
+

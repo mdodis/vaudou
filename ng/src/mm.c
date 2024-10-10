@@ -54,6 +54,12 @@ static void add_entity_allocation(VD_EntityAllocationInfo *root, VD_EntityAlloca
     {
         prev_next = (VD_EntityAllocationInfo*)load_ptr(&root->next);
         info->next = prev_next;
+
+        // @note: not sure how this can happen...
+        if (prev_next == info) {
+            break;
+        }
+
     } while (compare_and_swap_ptr(&root->next, info, prev_next));
 }
 

@@ -72,7 +72,11 @@ VD_R_GPUMesh vd_renderer_upload_mesh(
     VD_R_Vertex *vertices,
     size_t num_vertices);
 
+// ----OBSERVERS------------------------------------------------------------------------------------
 extern void RendererOnWindowComponentSet(ecs_iter_t *it);
+
+// ----SYSTEMS--------------------------------------------------------------------------------------
 extern void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it);
+extern void RendererCheckWindowComponentSizeChange(ecs_iter_t *it);
 
 #endif // !VD_RENDERER_H

@@ -16,7 +16,8 @@ ECS_SYSTEM_DECLARE(GarbageCollectTask);
 ECS_SYSTEM_DECLARE(FreeFrameAllocationSystem);
 
 // ----RENDERER-------------------------------------------------------------------------------------
-ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents);
+ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents); // EcsOnStore
+ECS_SYSTEM_DECLARE(RendererCheckWindowComponentSizeChange);  // EcsOnPostLoad
 
 void BuiltinImport(ecs_world_t *world)
 {
@@ -44,4 +45,11 @@ void BuiltinImport(ecs_world_t *world)
 		RendererRenderToWindowSurfaceComponents,
 		EcsOnStore,
 		WindowSurfaceComponent);
+
+	ECS_SYSTEM_DEFINE(
+		world,
+		RendererCheckWindowComponentSizeChange,
+		EcsPostLoad,
+		WindowComponent,
+		Size2D);
 }

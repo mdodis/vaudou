@@ -1,6 +1,8 @@
 #include "w_sdl.h"
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_vulkan.h"
+#include "fmt.h"
+#include "mm.h"
 
 static int Sdl_Initialized = 0;
 static void ensure_sdl_initialized()
@@ -44,7 +46,7 @@ VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(
     return result == SDL_TRUE;
 }
 
-static void OnAddWindowObserver(ecs_iter_t *it)
+static void OnAddWindowComponent(ecs_iter_t *it)
 {
     ensure_sdl_initialized();
     for (int i = 0; i < it->count; ++i) {
@@ -85,6 +87,17 @@ static void PollSDLEvents(ecs_iter_t *it)
     {
         switch (evt.type)
         {
+            case SDL_EVENT_KEY_DOWN:
+            {
+                if (evt.key.key == SDLK_N && evt.key.down)
+                {
+                    static int counter = 0;
+                    const char *s = vd_snfmt(VD_MM_FRAME_ARENA(), "Extra Window %{i32}%{null}", counter++).data;
+                    ecs_entity_t w = ecs_entity(it->world, { .name = s, });
+                    ecs_add(it->world, w, WindowComponent);
+                }                
+            } break;
+
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
             {
                 SDL_Window *closed_window = SDL_GetWindowFromID(evt.window.windowID);
@@ -96,18 +109,22 @@ static void PollSDLEvents(ecs_iter_t *it)
                 });
 
                 ecs_iter_t qit = ecs_query_iter(it->world, q);
-                int remaining_windows = qit.count;
+                int remaining_windows = 0;
+
                 while (ecs_query_next(&qit)) {
                     WindowComponent *w = ecs_field(&qit, WindowComponent, 0);
 
                     for (int i = 0; i < qit.count; ++i) {
                         if (w[i].window_ptr == closed_window) {
                             ecs_delete(it->world, qit.entities[i]);
+                        } else {
+                            remaining_windows++;
                         }
                     }
                 }
 
                 if (remaining_windows == 0) {
+                    VD_LOG("WSDL", "No more windows. Closing...");
                     ecs_emit(it->world, &(ecs_event_desc_t) {
                         .event = AppQuitEvent,
                             .entity = ecs_id(Application),
@@ -116,6 +133,31 @@ static void PollSDLEvents(ecs_iter_t *it)
                                 .count = 1,
                         },
                     });
+                }
+            } break;
+
+            case SDL_EVENT_WINDOW_RESIZED:
+            {
+                SDL_Window *resized_window = SDL_GetWindowFromID(evt.window.windowID);
+                ecs_query_t *q = ecs_query(it->world, {
+                    .terms = {
+                        {.id = ecs_id(WindowComponent), },
+                    }
+                });
+
+                ecs_iter_t qit = ecs_query_iter(it->world, q);
+                while (ecs_query_next(&qit)) {
+                    WindowComponent *w = ecs_field(&qit, WindowComponent, 0);
+
+                    for (int i = 0; i < qit.count; ++i) {
+                        if (w[i].window_ptr == resized_window) {
+                            w[i].just_resized = 1;
+                            int w, h;
+                            SDL_GetWindowSizeInPixels(resized_window, &w, &h);
+
+                            ecs_set(it->world, qit.entities[i], Size2D, {w, h});
+                        }
+                    }
                 }
             } break;
         }
@@ -141,6 +183,30 @@ static void OnWindowComponentRemoveHook(ecs_iter_t *it)
     }
 }
 
+static void ClearWindowComponentFrameChanges(ecs_iter_t *it)
+{
+    ensure_sdl_initialized();
+    WindowComponent *w = ecs_field(it, WindowComponent, 0);
+    for (int i = 0; i < it->count; ++i) {
+
+        SDL_Window *sdlw = (SDL_Window *)w[i].window_ptr;
+
+        w->just_resized = 0;
+    }
+}
+
+static void OnSetWindowComponent(ecs_iter_t *it)
+{
+    ensure_sdl_initialized();
+    WindowComponent *w = ecs_field(it, WindowComponent, 0);
+    for (int i = 0; i < it->count; ++i) {
+
+        SDL_Window *sdlw = (SDL_Window*)w[i].window_ptr;
+
+        SDL_SetWindowResizable(sdlw, w->flags & WINDOW_FLAG_RESIZABLE);
+    }
+}
+
 void SdlImport(ecs_world_t *world)
 {
     ensure_sdl_initialized();
@@ -155,6 +221,19 @@ void SdlImport(ecs_world_t *world)
         .callback = PollSDLEvents
     });
 
+    ecs_system(
+        world,
+        {
+            .entity = ecs_entity(world, {
+                .name = "ClearWindowComponentFrameChanges",
+                .add = ecs_ids(ecs_dependson(EcsOnStore)),
+            }),
+            .query.terms = {
+                { ecs_id(WindowComponent) },
+            },
+            .callback = ClearWindowComponentFrameChanges,
+        });
+
     ecs_set_hooks(world, WindowComponent, {
         .on_remove = OnWindowComponentRemoveHook,
     });
@@ -162,7 +241,13 @@ void SdlImport(ecs_world_t *world)
     ecs_observer(world, {
         .query = {.terms = {{.id = ecs_id(WindowComponent) }}},
         .events = { EcsOnAdd },
-        .callback = OnAddWindowObserver,
+        .callback = OnAddWindowComponent,
+    });
+
+    ecs_observer(world, {
+        .query = { .terms = {{ .id = ecs_id(WindowComponent) }}},
+        .events = { EcsOnSet },
+        .callback = OnSetWindowComponent,
     });
 
     ecs_observer(world, {

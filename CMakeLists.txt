@@ -31,6 +31,7 @@ add_subdirectory("lib")
 add_subdirectory("shdc")
 add_subdirectory("ng")
 
+add_subdirectory("modules")
 add_subdirectory("w_sdl")
 
 add_subdirectory("cli")

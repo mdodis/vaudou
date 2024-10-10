@@ -205,6 +205,12 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             Num_Extra_Instance_Extensions[i]);
         enabled_extensions[num_enabled_extensions++] = Num_Extra_Instance_Extensions[i];
     }
+    
+    VkInstanceCreateFlags instance_create_flags = 0;
+#if VD_PLATFORM_MACOS
+    instance_create_flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
+
     VD_VK_CHECK(vkCreateInstance(
         &(VkInstanceCreateInfo)
         {
@@ -222,9 +228,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             .enabledExtensionCount = num_enabled_extensions,
             .ppEnabledLayerNames = enabled_layers,
             .enabledLayerCount = num_enabled_layers,
-#if VD_PLATFORM_MACOS
-            .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
-#endif
+            .flags = instance_create_flags,
         },
         0,
         &renderer->instance));
@@ -1138,9 +1142,13 @@ static void create_swapchain_image_views_and_framebuffers(
     }
 
 // ----FRAME DATA-----------------------------------------------------------------------------------
-    array_init(frame_data, &entity_allocator);
-    rebuild_frame_data(name, renderer, entity, &frame_data);
-
+    if (*out_frame_data == 0) {
+        array_init(frame_data, &entity_allocator);
+        rebuild_frame_data(name, renderer, entity, &frame_data);
+    } else {
+        frame_data = *out_frame_data;
+    }
+    
 // ----COLOR IMAGE----------------------------------------------------------------------------------
     VD_VK_CHECK(vmaCreateImage(
         renderer->allocator,
@@ -1233,7 +1241,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
         VkFormat                        surface_format;
         dynarray VkImage                *images;
         dynarray VkImageView            *image_views;
-        dynarray VD_RendererFrameData   *frame_data;
+        dynarray VD_RendererFrameData   *frame_data = 0;
         VD_R_AllocatedImage             color_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
@@ -1629,6 +1637,70 @@ void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
 
     for (int i = 0; i < it->count; ++i) {
         render_window_surface(renderer, &ws[i]);
+    }
+}
+
+void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
+{
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+    WindowComponent *w  = ecs_field(it, WindowComponent, 0);
+    Size2D *sizes       = ecs_field(it, Size2D,          1);
+
+    for (int i = 0; i < it->count; ++i) {
+        if (!w[i].just_resized) {
+            continue;
+        }
+
+        WindowSurfaceComponent *ws = ecs_get(it->world, it->entities[i], WindowSurfaceComponent);
+
+        VD_LOG_FMT(
+            "Renderer",
+            "Window %{cstr} just resized!",
+            ecs_get_name(it->world, it->entities[i]));
+        vkDeviceWaitIdle(renderer->device);
+
+        vkDestroyImageView(renderer->device, ws->color_image.view, 0);
+        vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
+
+        for (int j = 0; j < array_len(ws->image_views); ++j) {
+            vkDestroyImageView(renderer->device, ws->image_views[j], 0);
+        }
+
+        vkDestroySwapchainKHR(renderer->device, ws->swapchain, 0);
+        vkDestroySurfaceKHR(renderer->instance, ws->surface, 0);
+        
+        VkSurfaceKHR surface = w[i].create_surface(&w[i], renderer->instance);
+        VkSwapchainKHR                  swapchain;
+        VkFormat                        surface_format;
+        dynarray VkImage                *images;
+        dynarray VkImageView            *image_views;
+        dynarray VD_RendererFrameData   *frame_data = ws->frame_data;
+        VD_R_AllocatedImage             color_image;
+        create_swapchain_image_views_and_framebuffers(
+            ecs_get_name(it->world, it->entities[i]),
+            it->entities[i],
+            renderer,
+            surface,
+            (VkExtent2D) { sizes[i].x, sizes[i].y },
+            &swapchain,
+            &surface_format,
+            &images,
+            &image_views,
+            &frame_data,
+            &color_image);
+
+        ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
+            .swapchain = swapchain,
+            .surface = surface,
+            .surface_format = surface_format,
+            .images = images,
+            .image_views = image_views,
+            .extent = { sizes[i].x, sizes[i].y },
+            .frame_data = frame_data,
+            .current_frame = 0,
+            .color_image = color_image,
+        });
     }
 }
 

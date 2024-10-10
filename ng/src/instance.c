@@ -133,6 +133,11 @@ void vd_instance_main(VD_Instance *instance)
     ecs_entity_t w = ecs_entity(instance->world, { .name = "Vaudou" });
     ecs_add(instance->world, w, WindowComponent);
 
+    WindowComponent *window_component = ecs_get(instance->world, w, WindowComponent);
+    window_component->flags = WINDOW_FLAG_RESIZABLE;
+
+    ecs_modified(instance->world, w, WindowComponent);
+
     while (!instance->should_close) {
         ecs_progress(instance->world, 0.0f);
     }

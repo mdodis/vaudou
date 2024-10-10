@@ -28,10 +28,17 @@ typedef struct {
     i32 y;
 } Size2D;
 
+typedef enum {
+    WINDOW_FLAG_NONE = 0,
+    WINDOW_FLAG_RESIZABLE = 1 << 0,
+} WindowFlags;
+
 struct WindowComponent {
     VD_WindowCreateSurfaceProc              *create_surface;
     void                                    *window_ptr;
     VD_CALLBACK(VD_ImmediateDestroyEntity)  on_immediate_destroy;
+    WindowFlags                             flags;
+    int                                     just_resized;
 };
 
 /**
@@ -68,8 +75,8 @@ extern ECS_SYSTEM_DECLARE(FreeFrameAllocationSystem);
 extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
 
 // ----RENDERER-------------------------------------------------------------------------------------
-extern ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents);
-
+extern ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents); // EcsOnStore
+extern ECS_SYSTEM_DECLARE(RendererCheckWindowComponentSizeChange);  // EcsOnPostLoad
 extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
 
 

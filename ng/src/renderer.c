@@ -61,6 +61,7 @@ struct VD_Renderer {
     } presentation;
 
     VkFormat                            color_image_format;
+    VkFormat                            depth_image_format;
 
     struct {
         struct {
@@ -80,6 +81,7 @@ struct VD_Renderer {
     struct {
         VD_R_GPUMesh            quad;
         VD_R_GPUMesh            sphere;
+        VD_R_GPUMesh            cube;
     } meshes;
 
     struct {
@@ -647,6 +649,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
 // ----DEFAULT FORMATS------------------------------------------------------------------------------
     renderer->color_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    renderer->depth_image_format = VK_FORMAT_D32_SFLOAT;
 
 // ----IMMEDIATE QUEUE------------------------------------------------------------------------------
 
@@ -758,6 +761,30 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     }
 
+    {
+        VD_R_Vertex *vertices;
+        int num_vertices;
+        u32 *indices;
+        int num_indices;
+        vec3 extents = {1.0f, 1.0f, 1.0f};
+        vd_r_generate_cube_data(
+            &vertices,
+            &num_vertices,
+            &indices,
+            &num_indices,
+            extents,
+            VD_MM_FRAME_ALLOCATOR());
+
+        renderer->meshes.cube = vd_renderer_upload_mesh(
+            renderer,
+            indices,
+            num_indices,
+            vertices,
+            num_vertices);
+
+        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.cube);
+
+    }
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
         TracyCZoneN(Create_Pipeline_Opaque, "Create Pipeline Opaque", 1);
@@ -830,15 +857,19 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
                     },
                 },
                 .layout = renderer->pipelines.pbropaque.layout,
-                .depth_test.on = 0,
+                .depth_test = {
+                    .on = 1,
+                    .write = 1,
+                    .cmp_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
+                },
                 .blend.on = 0,
                 .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
                 .polygon_mode = VK_POLYGON_MODE_FILL,
-                .cull_mode = VK_CULL_MODE_NONE,
+                .cull_mode = VK_CULL_MODE_FRONT_BIT,
                 .front_face = VK_FRONT_FACE_CLOCKWISE,
                 .multisample.on = 0,
                 .color_format = renderer->color_image_format,
-                .depth_format = VK_FORMAT_UNDEFINED,
+                .depth_format = renderer->depth_image_format,
             },
             &renderer->pipelines.pbropaque.pipeline));
 
@@ -986,7 +1017,8 @@ static void create_swapchain_image_views_and_framebuffers(
     dynarray VkImage                **out_images,
     dynarray VkImageView            **out_image_views,
     dynarray VD_RendererFrameData   **out_frame_data,
-    VD_R_AllocatedImage             *out_color_image)
+    VD_R_AllocatedImage             *out_color_image,
+    VD_R_AllocatedImage             *out_depth_image)
 {
     u32                 image_count;
     VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
@@ -1219,6 +1251,7 @@ static void create_swapchain_image_views_and_framebuffers(
     }
     
 // ----COLOR IMAGE----------------------------------------------------------------------------------
+    out_color_image->format = renderer->color_image_format;
     VD_VK_CHECK(vmaCreateImage(
         renderer->allocator,
         & (VkImageCreateInfo)
@@ -1229,7 +1262,7 @@ static void create_swapchain_image_views_and_framebuffers(
             .arrayLayers            = 1,
             .samples                = VK_SAMPLE_COUNT_1_BIT,
             .tiling                 = VK_IMAGE_TILING_OPTIMAL,
-            .format                 = renderer->color_image_format,
+            .format                 = out_color_image->format,
             .extent                 = {extent.width, extent.height, 1},
             .usage                  = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -1260,7 +1293,7 @@ static void create_swapchain_image_views_and_framebuffers(
         & (VkImageViewCreateInfo)
         {
             .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .format             = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format             = out_color_image->format,
             .image              = out_color_image->image,
             .viewType           = VK_IMAGE_VIEW_TYPE_2D,
             .subresourceRange   =
@@ -1274,6 +1307,61 @@ static void create_swapchain_image_views_and_framebuffers(
         },
         0,
         &out_color_image->view));
+
+// ----DEPTH IMAGE----------------------------------------------------------------------------------
+    out_depth_image->format = renderer->depth_image_format;
+    VD_VK_CHECK(vmaCreateImage(
+        renderer->allocator,
+        & (VkImageCreateInfo)
+        {
+            .sType                  = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType              = VK_IMAGE_TYPE_2D,
+            .mipLevels              = 1,
+            .arrayLayers            = 1,
+            .samples                = VK_SAMPLE_COUNT_1_BIT,
+            .tiling                 = VK_IMAGE_TILING_OPTIMAL,
+            .format                 = out_depth_image->format,
+            .extent                 = {extent.width, extent.height, 1},
+            .usage                  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        },
+        & (VmaAllocationCreateInfo)
+        {
+            .requiredFlags          = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            .usage                  = VMA_MEMORY_USAGE_GPU_ONLY,
+        },
+        &out_depth_image->image,
+        &out_depth_image->allocation,
+        0));
+
+    name_object(
+        renderer,
+        & (VkDebugUtilsObjectNameInfoEXT)
+        {
+            .sType              = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+            .objectType         = VK_OBJECT_TYPE_IMAGE,
+            .objectHandle       = (u64)out_depth_image->image,
+            .pObjectName        = "Depth Image",
+        });
+
+    VD_VK_CHECK(vkCreateImageView(
+        renderer->device,
+        & (VkImageViewCreateInfo)
+        {
+            .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .format             = out_depth_image->format,
+            .image              = out_depth_image->image,
+            .viewType           = VK_IMAGE_VIEW_TYPE_2D,
+            .subresourceRange   =
+            {
+                .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            }
+        },
+        0,
+        &out_depth_image->view));
 
     *out_swapchain      = swapchain;
     *out_format         = best_surface_format.format;
@@ -1312,6 +1400,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
         dynarray VkImageView            *image_views;
         dynarray VD_RendererFrameData   *frame_data = 0;
         VD_R_AllocatedImage             color_image;
+        VD_R_AllocatedImage             depth_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],
@@ -1323,7 +1412,8 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             &images,
             &image_views,
             &frame_data,
-            &color_image);
+            &color_image,
+            &depth_image);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,
@@ -1335,6 +1425,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             .frame_data = frame_data,
             .current_frame = 0,
             .color_image = color_image,
+            .depth_image = depth_image,
         });
 
         VD_CALLBACK_SET(w[i].on_immediate_destroy, on_window_component_immediate_destroy, renderer);
@@ -1350,7 +1441,9 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
     vkDeviceWaitIdle(renderer->device);
 
     vkDestroyImageView(renderer->device, ws->color_image.view, 0);
+    vkDestroyImageView(renderer->device, ws->depth_image.view, 0);
     vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
+    vmaDestroyImage(renderer->allocator, ws->depth_image.image, ws->depth_image.allocation);
 
     for (int i = 0; i < array_len(ws->frame_data); ++i) {
         vd_deletion_queue_flush(&ws->frame_data[i].deletion_queue);
@@ -1373,6 +1466,7 @@ int vd_renderer_deinit(VD_Renderer *renderer)
 {
     vkDestroyCommandPool(renderer->device, renderer->imm.command_pool, 0);
     vkDestroyFence(renderer->device, renderer->imm.fence, 0);
+    vkDestroyDescriptorSetLayout(renderer->device, renderer->descriptors.scene_data, 0);
 
     vd_deletion_queue_flush(&renderer->deletion_queue);
     vmaDestroyAllocator(renderer->allocator);
@@ -1447,6 +1541,13 @@ static void render_window_surface(
         VK_IMAGE_LAYOUT_GENERAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
+    vd_vk_image_transition(
+        cmd,
+        ws->depth_image.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+
     {
         vkCmdBeginRendering(
             cmd,
@@ -1459,10 +1560,19 @@ static void render_window_surface(
                 .pColorAttachments = (VkRenderingAttachmentInfo[])
                 {
                     {
-                        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                        .imageView = ws->color_image.view,
-                        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    }
+                        .sType          = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                        .imageView      = ws->color_image.view,
+                        .imageLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    },
+                },
+                .pDepthAttachment = & (VkRenderingAttachmentInfo)
+                {
+                    .sType          = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView      = ws->depth_image.view,
+                    .imageLayout    = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                    .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue.depthStencil.depth = 0.0f,
                 },
             });
 
@@ -1830,6 +1940,7 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
         dynarray VkImageView            *image_views;
         dynarray VD_RendererFrameData   *frame_data = ws->frame_data;
         VD_R_AllocatedImage             color_image;
+        VD_R_AllocatedImage             depth_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],
@@ -1841,7 +1952,8 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
             &images,
             &image_views,
             &frame_data,
-            &color_image);
+            &color_image,
+            &depth_image);
 
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,
@@ -1853,6 +1965,7 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
             .frame_data = frame_data,
             .current_frame = 0,
             .color_image = color_image,
+            .depth_image = depth_image,
         });
     }
 }

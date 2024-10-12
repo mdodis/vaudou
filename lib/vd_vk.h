@@ -62,6 +62,8 @@ typedef struct {
 
     struct {
         int                                     on;
+        int                                     write;
+        VkCompareOp                             cmp_op;
     } depth_test;
 
     VkFormat                                    color_format;
@@ -181,8 +183,8 @@ VkResult vd_vk_build_pipeline(
 
     if (info->depth_test.on) {
         depth_stencil.depthTestEnable = VK_TRUE;
-        depth_stencil.depthWriteEnable = VK_TRUE;
-        depth_stencil.depthCompareOp = VK_COMPARE_OP_NEVER;
+        depth_stencil.depthWriteEnable = info->depth_test.write;
+        depth_stencil.depthCompareOp = info->depth_test.cmp_op;
         depth_stencil.depthBoundsTestEnable = VK_FALSE;
         depth_stencil.stencilTestEnable = VK_FALSE;
         depth_stencil.minDepthBounds = 0.0f;

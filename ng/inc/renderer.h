@@ -48,6 +48,7 @@ struct WindowSurfaceComponent {
     VD_ARRAY VD_RendererFrameData   *frame_data;
     int                             current_frame;
     VD_R_AllocatedImage             color_image;
+    VD_R_AllocatedImage             depth_image;
 };
 
 VD_Renderer *vd_renderer_create();

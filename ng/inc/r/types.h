@@ -56,6 +56,14 @@ void vd_r_generate_sphere_data(
     int rings,
     VD_Allocator *allocator);
 
+void vd_r_generate_cube_data(
+    VD_R_Vertex **vertices,
+    int *num_vertices,
+    unsigned int **indices,
+    int *num_indices,
+    vec3 extents,
+    VD_Allocator *allocator);
+
 void vd_r_perspective(mat4 proj, float fov, float aspect, float znear, float zfar);
 
 #endif // !VD_R_TYPES_H

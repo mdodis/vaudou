@@ -77,6 +77,97 @@ void vd_r_generate_sphere_data(
     }
 }
 
+void vd_r_generate_cube_data(
+    VD_R_Vertex **vertices,
+    int *num_vertices,
+    unsigned int **indices,
+    int *num_indices,
+    vec3 extents,
+    VD_Allocator *allocator)
+{
+    *num_vertices = 24;
+    *num_indices = 36;
+
+    *vertices = (VD_R_Vertex*)allocator->proc_alloc(
+        0,
+        0,
+        sizeof(**vertices) * *num_vertices,
+        allocator->c);
+    *indices = (unsigned int*)allocator->proc_alloc(
+        0,
+        0,
+        sizeof(**indices) * *num_indices,
+        allocator->c);
+
+    float hw = extents[0] / 2.0f;
+    float hh = extents[1] / 2.0f;
+    float hd = extents[2] / 2.0f;
+
+    VD_R_Vertex cube_vertices[24] = {
+        // Front face
+        {{-hw, -hh,  hd}, 0.0f, { 0.0f,  0.0f,  1.0f}, 0.0f, {1.0f, 1.0f, 1.0f, 1.0f}}, // Bottom-left
+        {{ hw, -hh,  hd}, 1.0f, { 0.0f,  0.0f,  1.0f}, 0.0f, {1.0f, 1.0f, 1.0f, 1.0f}}, // Bottom-right
+        {{ hw,  hh,  hd}, 1.0f, { 0.0f,  0.0f,  1.0f}, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f}}, // Top-right
+        {{-hw,  hh,  hd}, 0.0f, { 0.0f,  0.0f,  1.0f}, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f}}, // Top-left
+
+        // Back face
+        {{ hw, -hh, -hd}, 0.0f, { 0.0f,  0.0f, -1.0f}, 0.0f, {1.0f, 0.0f, 0.0f, 1.0f}}, // Bottom-left
+        {{-hw, -hh, -hd}, 1.0f, { 0.0f,  0.0f, -1.0f}, 0.0f, {1.0f, 0.0f, 0.0f, 1.0f}}, // Bottom-right
+        {{-hw,  hh, -hd}, 1.0f, { 0.0f,  0.0f, -1.0f}, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f}}, // Top-right
+        {{ hw,  hh, -hd}, 0.0f, { 0.0f,  0.0f, -1.0f}, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f}}, // Top-left
+
+        // Left face
+        {{-hw, -hh, -hd}, 0.0f, {-1.0f,  0.0f,  0.0f}, 0.0f, {0.0f, 1.0f, 0.0f, 1.0f}}, // Bottom-left
+        {{-hw, -hh,  hd}, 1.0f, {-1.0f,  0.0f,  0.0f}, 0.0f, {0.0f, 1.0f, 0.0f, 1.0f}}, // Bottom-right
+        {{-hw,  hh,  hd}, 1.0f, {-1.0f,  0.0f,  0.0f}, 1.0f, {0.0f, 1.0f, 0.0f, 1.0f}}, // Top-right
+        {{-hw,  hh, -hd}, 0.0f, {-1.0f,  0.0f,  0.0f}, 1.0f, {0.0f, 1.0f, 0.0f, 1.0f}}, // Top-left
+
+        // Right face
+        {{ hw, -hh,  hd}, 0.0f, { 1.0f,  0.0f,  0.0f}, 0.0f, {0.0f, 0.0f, 1.0f, 1.0f}}, // Bottom-left
+        {{ hw, -hh, -hd}, 1.0f, { 1.0f,  0.0f,  0.0f}, 0.0f, {0.0f, 0.0f, 1.0f, 1.0f}}, // Bottom-right
+        {{ hw,  hh, -hd}, 1.0f, { 1.0f,  0.0f,  0.0f}, 1.0f, {0.0f, 0.0f, 1.0f, 1.0f}}, // Top-right
+        {{ hw,  hh,  hd}, 0.0f, { 1.0f,  0.0f,  0.0f}, 1.0f, {0.0f, 0.0f, 1.0f, 1.0f}}, // Top-left
+
+        // Top face
+        {{-hw,  hh,  hd}, 0.0f, { 0.0f,  1.0f,  0.0f}, 0.0f, {1.0f, 1.0f, 0.0f, 1.0f}}, // Bottom-left
+        {{ hw,  hh,  hd}, 1.0f, { 0.0f,  1.0f,  0.0f}, 0.0f, {1.0f, 1.0f, 0.0f, 1.0f}}, // Bottom-right
+        {{ hw,  hh, -hd}, 1.0f, { 0.0f,  1.0f,  0.0f}, 1.0f, {1.0f, 1.0f, 0.0f, 1.0f}}, // Top-right
+        {{-hw,  hh, -hd}, 0.0f, { 0.0f,  1.0f,  0.0f}, 1.0f, {1.0f, 1.0f, 0.0f, 1.0f}}, // Top-left
+
+        // Bottom face
+        {{-hw, -hh, -hd}, 0.0f, { 0.0f, -1.0f,  0.0f}, 0.0f, {0.0f, 1.0f, 1.0f, 1.0f}}, // Bottom-left
+        {{ hw, -hh, -hd}, 1.0f, { 0.0f, -1.0f,  0.0f}, 0.0f, {0.0f, 1.0f, 1.0f, 1.0f}}, // Bottom-right
+        {{ hw, -hh,  hd}, 1.0f, { 0.0f, -1.0f,  0.0f}, 1.0f, {0.0f, 1.0f, 1.0f, 1.0f}}, // Top-right
+        {{-hw, -hh,  hd}, 0.0f, { 0.0f, -1.0f,  0.0f}, 1.0f, {0.0f, 1.0f, 1.0f, 1.0f}}, // Top-left
+    };
+
+    // Copy vertices to the output buffer
+    for (int i = 0; i < 24; i++) {
+        (*vertices)[i] = cube_vertices[i];
+    }
+
+    // Define indices for 12 triangles (2 triangles per face, 6 faces)
+    unsigned int cube_indices[36] = {
+        // Front face
+        0, 1, 2, 2, 3, 0,
+        // Back face
+        4, 5, 6, 6, 7, 4,
+        // Left face
+        8, 9, 10, 10, 11, 8,
+        // Right face
+        12, 13, 14, 14, 15, 12,
+        // Top face
+        16, 17, 18, 18, 19, 16,
+        // Bottom face
+        20, 21, 22, 22, 23, 20,
+    };
+
+    // Copy indices to the output buffer
+    for (int i = 0; i < 36; i++) {
+        (*indices)[i] = cube_indices[i];
+    }
+}
+
 void vd_r_perspective(mat4 proj, float fov, float aspect, float znear, float zfar)
 {
     glm_perspective(fov, aspect, znear, zfar, proj);

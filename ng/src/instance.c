@@ -68,7 +68,7 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
                 "%{stru32}/engine.vdlog%{null}",
                 vd_str_chop_right_last_of(exec_path, '/'));
 
-    instance->log.filepath = strdup(log_path.data);
+    instance->log.filepath = _strdup(log_path.data);
     instance->log.flags = VD_LOG_WRITE_STDOUT;
     vd_fmt_printf("%{stru32}\n", log_path);
 
@@ -133,7 +133,8 @@ void vd_instance_main(VD_Instance *instance)
     ecs_entity_t w = ecs_entity(instance->world, { .name = "Vaudou" });
     ecs_add(instance->world, w, WindowComponent);
 
-    WindowComponent *window_component = ecs_get(instance->world, w, WindowComponent);
+    WindowComponent *window_component = (WindowComponent*)
+        ecs_get(instance->world, w, WindowComponent);
     window_component->flags = WINDOW_FLAG_RESIZABLE;
 
     ecs_modified(instance->world, w, WindowComponent);

@@ -16,6 +16,8 @@
 #include "fmt.h"
 #include "vd_log.h"
 #include "flecs.h"
+#include "cglm/project.h"
+#include "cglm/affine.h"
 #include "array.h"
 
 #include "ng_cfg.h"
@@ -77,7 +79,12 @@ struct VD_Renderer {
 
     struct {
         VD_R_GPUMesh            quad;
+        VD_R_GPUMesh            sphere;
     } meshes;
+
+    struct {
+        VkDescriptorSetLayout   scene_data;
+    } descriptors;
 
     VD_SHDC                             *shdc;
 
@@ -725,6 +732,32 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.quad);
     }
 
+    {
+        VD_R_Vertex *vertices;
+        int num_vertices;
+        u32 *indices;
+        int num_indices;
+        vd_r_generate_sphere_data(
+            &vertices,
+            &num_vertices,
+            &indices,
+            &num_indices,
+            0.5f,
+            16,
+            16,
+            VD_MM_FRAME_ALLOCATOR());
+
+        renderer->meshes.sphere = vd_renderer_upload_mesh(
+            renderer,
+            indices,
+            num_indices,
+            vertices,
+            num_vertices);
+
+        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.sphere);
+
+    }
+
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
         TracyCZoneN(Create_Pipeline_Opaque, "Create Pipeline Opaque", 1);
@@ -819,6 +852,26 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
+// ----DESCRIPTOR LAYOUTS---------------------------------------------------------------------------
+
+    VD_VK_CHECK(vkCreateDescriptorSetLayout(
+            renderer->device,
+            & (VkDescriptorSetLayoutCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = (VkDescriptorSetLayoutBinding[])
+                {
+                    (VkDescriptorSetLayoutBinding) {
+                        .binding = 0,
+                        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                    }
+                },
+            },
+            0,
+            &renderer->descriptors.scene_data));
 
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
@@ -894,6 +947,22 @@ static void rebuild_frame_data(
             },
             0,
             &frame_data[i].sem_present_image));
+
+        vd_descriptor_allocator_init(
+            &frame_data[i].descriptor_allocator,
+            & (VD_DescriptorAllocatorInitInfo)
+            {
+                .device = renderer->device,
+                .initial_sets = 1000,
+                .ratios = (VD_DescriptorPoolSizeRatio[])
+                {
+                    (VD_DescriptorPoolSizeRatio) { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,            3 },
+                    (VD_DescriptorPoolSizeRatio) { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,           3 },
+                    (VD_DescriptorPoolSizeRatio) { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,           3 },
+                    (VD_DescriptorPoolSizeRatio) { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,   4 },
+                },
+                .num_ratios = 4,
+            });
 
         vd_deletion_queue_init(
             &frame_data[i].deletion_queue,
@@ -1289,6 +1358,7 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
         vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_image_available, 0);
         vkDestroySemaphore(renderer->device, ws->frame_data[i].sem_present_image, 0);
         vkDestroyCommandPool(renderer->device, ws->frame_data[i].command_pool, 0);
+        vd_descriptor_allocator_deinit(&ws->frame_data[i].descriptor_allocator);
     }
 
     for (int i = 0; i < array_len(ws->image_views); ++i) {
@@ -1377,7 +1447,6 @@ static void render_window_surface(
         VK_IMAGE_LAYOUT_GENERAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-    // Draw Triangle
     {
         vkCmdBeginRendering(
             cmd,
@@ -1426,10 +1495,32 @@ static void render_window_surface(
                 .extent = ws->extent,
             });
 
+        float aspect_ratio = (float)ws->extent.width / (float)ws->extent.height;
+        mat4 projmatrix;
+        vd_r_perspective(projmatrix, glm_rad(60.0f), aspect_ratio, 0.1f, 100.0f);
+
+        mat4 objmatrix = GLM_MAT4_IDENTITY_INIT;
+
+        glm_translate_z(objmatrix, -4.0f);
+
+        static float dt = 0.0f;
+        dt += 0.001f;
+        vec3 up = {0.0f, 1.0f, 0.0f };
+        glm_rotate(objmatrix, 1.0f * dt, up);
+
+
+
+        mat4 worldmatrix;
+        glm_mat4_mul(
+            projmatrix,
+            objmatrix,
+            worldmatrix);
+
         VD_R_GPUPushConstants constants = {
-            .vertex_buffer = renderer->meshes.quad.vertex_buffer_address,
-            .world_matrix = GLM_MAT4_IDENTITY_INIT,
+            .vertex_buffer = renderer->meshes.sphere.vertex_buffer_address,
         };
+
+        glm_mat4_copy(worldmatrix, constants.world_matrix);
 
         vkCmdPushConstants(
             cmd,
@@ -1439,9 +1530,57 @@ static void render_window_surface(
             sizeof(constants),
             &constants);
 
-        vkCmdBindIndexBuffer(cmd, renderer->meshes.quad.index.buffer, 0, VK_INDEX_TYPE_UINT32);
+        VD_R_AllocatedBuffer scene_data_buffer = vd_renderer_create_buffer(
+            renderer,
+            sizeof(VD_R_GPuSceneData),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-        vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+        vd_deletion_queue_push_buffer(&frame_data->deletion_queue, &scene_data_buffer);
+
+        {
+            VD_R_GPuSceneData *scene_data = (VD_R_GPuSceneData*)vd_renderer_map_buffer(
+                renderer,
+                &scene_data_buffer);
+            *scene_data = (VD_R_GPuSceneData)
+            {
+                .proj = GLM_MAT4_IDENTITY_INIT,
+            };
+
+            vd_renderer_unmap_buffer(renderer, &scene_data_buffer);
+
+            VkDescriptorSet global_descriptor = vd_descriptor_allocator_allocate(
+                &frame_data->descriptor_allocator,
+                renderer->descriptors.scene_data,
+                0);
+
+            vd_r_write_descriptor_sets(
+                global_descriptor,
+                & (VD_R_WriteDescriptorSetsInfo)
+                {
+                    .device = renderer->device,
+                    .num_entries = 1,
+                    .entries = (VD_R_DescriptorSetEntry[])
+                    {
+                        (VD_R_DescriptorSetEntry)
+                        {
+                            .binding = 0,
+                            .type = VD_R_DESCRIPTOR_SET_ENTRY_BUFFER,
+                            .t = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                            .buffer = (VkDescriptorBufferInfo) {
+                                .buffer = scene_data_buffer.buffer,
+                                .offset = 0,
+                                .range = sizeof(VD_R_GPuSceneData),
+                            },
+                        },
+                    },
+                },
+                VD_MM_FRAME_ALLOCATOR());
+        }
+
+        vkCmdBindIndexBuffer(cmd, renderer->meshes.sphere.index.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdDrawIndexed(cmd, renderer->meshes.sphere.index.info.size / sizeof(u32), 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);
     }
@@ -1516,6 +1655,8 @@ static void render_window_surface(
             .pWaitSemaphores = &frame_data->sem_present_image,
         });
 
+    vd_descriptor_allocator_clear(&frame_data->descriptor_allocator);
+
     vd_deletion_queue_flush(&frame_data->deletion_queue);
 }
 
@@ -1545,6 +1686,18 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
         &result.info));
 
     return result;
+}
+
+void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+{
+    void *data;
+    vmaMapMemory(renderer->allocator, buffer->allocation, &data);
+    return data;
+}
+
+void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+{
+    vmaUnmapMemory(renderer->allocator, buffer->allocation);
 }
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer)

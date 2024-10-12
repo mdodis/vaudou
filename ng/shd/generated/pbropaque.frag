@@ -8,7 +8,6 @@
 "\n"
 "void main() \n"
 "{\n"
-"	//return red\n"
-"	outFragColor = vec4(inColor,1.0f);\n"
+"	outFragColor = vec4(inColor, 1.0f);\n"
 "}\n"
 "";

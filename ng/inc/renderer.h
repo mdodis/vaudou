@@ -9,6 +9,7 @@
 
 #include "r/types.h"
 #include "r/deletion_queue.h"
+#include "r/descriptor_allocator.h"
 
 typedef struct VD_Instance  VD_Instance;
 typedef struct VD_Renderer  VD_Renderer;
@@ -28,12 +29,13 @@ typedef struct {
 } VD_RendererInitInfo;
 
 typedef struct {
-    VkCommandPool       command_pool;
-    VkCommandBuffer     command_buffer;
-    VkFence             fnc_render_complete;
-    VkSemaphore         sem_image_available;
-    VkSemaphore         sem_present_image;
-    VD_DeletionQueue    deletion_queue;
+    VkCommandPool           command_pool;
+    VkCommandBuffer         command_buffer;
+    VkFence                 fnc_render_complete;
+    VkSemaphore             sem_image_available;
+    VkSemaphore             sem_present_image;
+    VD_DescriptorAllocator  descriptor_allocator;
+    VD_DeletionQueue        deletion_queue;
 } VD_RendererFrameData;
 
 struct WindowSurfaceComponent {
@@ -60,6 +62,9 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
     size_t size,
     VkBufferUsageFlags flags,
     VmaMemoryUsage usage);
+
+void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
+void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
 

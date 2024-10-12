@@ -21,6 +21,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
 endif()
 
+if(MSVC)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
 
 # Add the external libraries
 add_subdirectory("ext")

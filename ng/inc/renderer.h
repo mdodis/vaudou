@@ -63,13 +63,34 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
     size_t size,
     VkBufferUsageFlags flags,
     VmaMemoryUsage usage);
+void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
 
 void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
 void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
 
-void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
+typedef struct {
+    VkExtent3D          size;
+    VkFormat            format;
+    VkImageUsageFlags   usage;
+    int                 mimapped;
+} VD_R_TextureCreateInfo;
+
+VD_R_AllocatedImage vd_renderer_create_texture(
+    VD_Renderer *renderer,
+    VD_R_TextureCreateInfo *info);
+
+void vd_renderer_upload_texture_data(
+    VD_Renderer *renderer,
+    VD_R_AllocatedImage *image,
+    void *data,
+    size_t size);
+
+void vd_renderer_destroy_texture(
+    VD_Renderer *renderer,
+    VD_R_AllocatedImage *image);
+
 
 VD_R_GPUMesh vd_renderer_upload_mesh(
     VD_Renderer *renderer,

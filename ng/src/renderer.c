@@ -85,7 +85,19 @@ struct VD_Renderer {
     } meshes;
 
     struct {
+        VD_R_AllocatedImage     black;
+        VD_R_AllocatedImage     white;
+        VD_R_AllocatedImage     checker_magenta;
+    } images;
+
+    struct {
+        VkSampler               nearest;
+        VkSampler               linear;
+    } samplers;
+
+    struct {
         VkDescriptorSetLayout   scene_data;
+        VkDescriptorSetLayout   single_image;
     } descriptors;
 
     VD_SHDC                             *shdc;
@@ -128,7 +140,23 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
     void* user_data)
 {
-    VD_LOG_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+    switch (severity) {
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+            VD_DBG_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+            VD_DBG_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+            VD_WRN_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+            VD_ERR_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+            break;
+        default:
+            VD_LOG_FMT("Vulkan", "%{cstr}", callback_data->pMessage);
+            break;
+    }
     return VK_FALSE;
 }
 
@@ -208,7 +236,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     }
 
     for (int i = 0; i < ARRAY_COUNT(Num_Extra_Instance_Extensions); ++i) {
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "Enabling instance extension: %{cstr}",
             Num_Extra_Instance_Extensions[i]);
@@ -374,13 +402,13 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             VK_VERSION_MINOR(props.properties.apiVersion),
             VK_VERSION_PATCH(props.properties.apiVersion));
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tExtensions: %{u32}",
             array_len(device_extensions));
 
         for (int j = 0; j < array_len(device_extensions); ++j) {
-            VD_LOG_FMT(
+            VD_DBG_FMT(
                 "Renderer",
                 "\t\t%{cstr}(%{u32}.%{u32}.%{u32})",
                 device_extensions[j].extensionName,
@@ -393,7 +421,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             }
         }
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tQueue Families: %{u32}",
             array_len(queue_families));
@@ -415,7 +443,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             if (queue_family_properties->queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 array_add(graphics_queues, j);
-                VD_LOG_FMT(
+                VD_DBG_FMT(
                     "Renderer",
                     "\t\tQueue[%{i32}] VK_QUEUE_GRAPHICS_BIT",
                     j);
@@ -423,7 +451,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
             if (queue_family_properties->queueFlags & VK_QUEUE_COMPUTE_BIT)
             {
-                VD_LOG_FMT(
+                VD_DBG_FMT(
                     "Renderer",
                     "\t\tQueue[%{i32}] VK_QUEUE_COMPUTE_BIT",
                     j);
@@ -431,7 +459,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
             if (queue_family_properties->queueFlags & VK_QUEUE_TRANSFER_BIT)
             {
-                VD_LOG_FMT(
+                VD_DBG_FMT(
                     "Renderer",
                     "\t\tQueue[%{i32}] VK_QUEUE_TRANSFER_BIT",
                     j);
@@ -439,7 +467,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
             if (queue_surface_support) {
 
-                VD_LOG_FMT(
+                VD_DBG_FMT(
                     "Renderer",
                     "\t\tQueue[%{i32}] Supports Presentation",
                     j);
@@ -465,27 +493,27 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             q_device_present_queue_family = present_queues[1];
         }
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tMulti draw indirect: %{u32}",
             features.features.multiDrawIndirect);
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tBuffer Device Address (1.2): %{u32}",
             features12.bufferDeviceAddress);
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tDescriptor Indexing (1.2): %{u32}",
             features12.descriptorIndexing);
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tSynchronization 2 (1.3): %{u32}",
             features13.synchronization2);
 
-        VD_LOG_FMT(
+        VD_DBG_FMT(
             "Renderer",
             "\tDynamic Rendering (1.3): %{u32}",
             features13.dynamicRendering);
@@ -514,9 +542,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     }
 
-    VD_LOG_FMT("Renderer", "Best device: %{i32}", best_device);
-    VD_LOG_FMT("Renderer", "\tGraphics Queue: %{u32}", best_device_graphics_queue_family);
-    VD_LOG_FMT("Renderer", "\tPresent Queue: %{u32}", best_device_present_queue_family);
+    VD_DBG_FMT("Renderer", "Best device: %{i32}", best_device);
+    VD_DBG_FMT("Renderer", "\tGraphics Queue: %{u32}", best_device_graphics_queue_family);
+    VD_DBG_FMT("Renderer", "\tPresent Queue: %{u32}", best_device_present_queue_family);
 
     renderer->physical_device = physical_devices[best_device];
 
@@ -785,6 +813,160 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.cube);
 
     }
+// ----DEFAULT IMAGES-------------------------------------------------------------------------------
+    {
+        u32 black   = vd_pack_unorm_r8g8b8a8((float[4]) { 0.0f,  0.0f,  0.0f,  1.0f});
+        u32 white   = vd_pack_unorm_r8g8b8a8((float[4]) { 1.0f,  1.0f,  1.0f,  1.0f});
+        u32 grey    = vd_pack_unorm_r8g8b8a8((float[4]) { 0.66f, 0.66f, 0.66f, 1.0f});
+        u32 magenta = vd_pack_unorm_r8g8b8a8((float[4]) { 1.0,   0.0f,  1.0f,  1.0f});
+
+        renderer->images.white = vd_renderer_create_texture(
+            renderer,
+            & (VD_R_TextureCreateInfo)
+            {
+                .size       = { 1, 1, 1 },
+                .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
+                .format     = VK_FORMAT_R8G8B8A8_UNORM,
+                .mimapped   = 0,
+            });
+
+        vd_renderer_upload_texture_data(
+            renderer,
+            &renderer->images.white,
+            &white,
+            sizeof(white));
+
+        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.white);
+
+        renderer->images.black = vd_renderer_create_texture(
+            renderer,
+            & (VD_R_TextureCreateInfo)
+            {
+                .size       = { 1, 1, 1 },
+                .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
+                .format     = VK_FORMAT_R8G8B8A8_UNORM,
+                .mimapped   = 0,
+            });
+
+        vd_renderer_upload_texture_data(
+            renderer,
+            &renderer->images.black,
+            &black,
+            sizeof(black));
+
+        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.black);
+
+        size_t checkers_size;
+        void *checkers = vd_r_generate_checkerboard(
+            magenta,
+            black,
+            16,
+            16,
+            &checkers_size,
+            VD_MM_FRAME_ALLOCATOR());
+
+        renderer->images.checker_magenta = vd_renderer_create_texture(
+            renderer,
+            & (VD_R_TextureCreateInfo)
+            {
+                .size       = { 16, 16, 1 },
+                .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
+                .format     = VK_FORMAT_R8G8B8A8_UNORM,
+                .mimapped   = 0,
+            });
+
+        vd_renderer_upload_texture_data(
+            renderer,
+            &renderer->images.checker_magenta,
+            checkers,
+            checkers_size);
+
+        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.checker_magenta);
+    }
+// ----SAMPLERS-------------------------------------------------------------------------------------
+    {
+        VD_VK_CHECK(vkCreateSampler(
+            renderer->device,
+            & (VkSamplerCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                .magFilter = VK_FILTER_NEAREST,
+                .minFilter = VK_FILTER_NEAREST,
+            },
+            0,
+            &renderer->samplers.nearest));
+
+        name_object(
+            renderer,
+            & (VkDebugUtilsObjectNameInfoEXT)
+            {
+                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                .objectType = VK_OBJECT_TYPE_SAMPLER,
+                .objectHandle = (u64)renderer->samplers.nearest,
+                .pObjectName = "default.samplers.nearest",
+            });
+
+        VD_VK_CHECK(vkCreateSampler(
+            renderer->device,
+            & (VkSamplerCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                .magFilter = VK_FILTER_LINEAR,
+                .minFilter = VK_FILTER_LINEAR,
+            },
+            0,
+            &renderer->samplers.linear));
+
+        name_object(
+            renderer,
+            & (VkDebugUtilsObjectNameInfoEXT)
+            {
+                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                .objectType = VK_OBJECT_TYPE_SAMPLER,
+                .objectHandle = (u64)renderer->samplers.linear,
+                .pObjectName = "default.samplers.linear",
+            });
+    }
+// ----DESCRIPTOR LAYOUTS---------------------------------------------------------------------------
+
+    VD_VK_CHECK(vkCreateDescriptorSetLayout(
+            renderer->device,
+            & (VkDescriptorSetLayoutCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = (VkDescriptorSetLayoutBinding[])
+                {
+                    (VkDescriptorSetLayoutBinding) {
+                        .binding = 0,
+                        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                    }
+                },
+            },
+            0,
+            &renderer->descriptors.scene_data));
+
+    VD_VK_CHECK(vkCreateDescriptorSetLayout(
+            renderer->device,
+            & (VkDescriptorSetLayoutCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = (VkDescriptorSetLayoutBinding[])
+                {
+                    (VkDescriptorSetLayoutBinding) {
+                        .binding = 0,
+                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .descriptorCount = 1,
+                    }
+                },
+            },
+            0,
+            &renderer->descriptors.single_image));
+
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
         TracyCZoneN(Create_Pipeline_Opaque, "Create Pipeline Opaque", 1);
@@ -826,7 +1008,11 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             & (VkPipelineLayoutCreateInfo)
             {
                 .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount         = 0,
+                .setLayoutCount         = 1,
+                .pSetLayouts = (VkDescriptorSetLayout[])
+                {
+                    renderer->descriptors.single_image,
+                },
                 .pushConstantRangeCount = 1,
                 .pPushConstantRanges = & (VkPushConstantRange)
                 {
@@ -883,27 +1069,6 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
-// ----DESCRIPTOR LAYOUTS---------------------------------------------------------------------------
-
-    VD_VK_CHECK(vkCreateDescriptorSetLayout(
-            renderer->device,
-            & (VkDescriptorSetLayoutCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindings = (VkDescriptorSetLayoutBinding[])
-                {
-                    (VkDescriptorSetLayoutBinding) {
-                        .binding = 0,
-                        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                    }
-                },
-            },
-            0,
-            &renderer->descriptors.scene_data));
-
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
 
@@ -1436,7 +1601,8 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
 void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 {
     VD_Renderer *renderer = (VD_Renderer*)usrdata;
-    WindowSurfaceComponent *ws = ecs_get(renderer->world, entity, WindowSurfaceComponent);
+    WindowSurfaceComponent *ws = (WindowSurfaceComponent*)
+        ecs_get(renderer->world, entity, WindowSurfaceComponent);
 
     vkDeviceWaitIdle(renderer->device);
 
@@ -1498,6 +1664,10 @@ static void render_window_surface(
         renderer->device,
         1,
         &frame_data->fnc_render_complete));
+
+    vd_descriptor_allocator_clear(&frame_data->descriptor_allocator);
+
+    vd_deletion_queue_flush(&frame_data->deletion_queue);
 
     u32 swapchain_image_idx;
     VD_VK_CHECK(vkAcquireNextImageKHR(
@@ -1618,8 +1788,6 @@ static void render_window_surface(
         vec3 up = {0.0f, 1.0f, 0.0f };
         glm_rotate(objmatrix, 1.0f * dt, up);
 
-
-
         mat4 worldmatrix;
         glm_mat4_mul(
             projmatrix,
@@ -1640,52 +1808,44 @@ static void render_window_surface(
             sizeof(constants),
             &constants);
 
-        VD_R_AllocatedBuffer scene_data_buffer = vd_renderer_create_buffer(
-            renderer,
-            sizeof(VD_R_GPuSceneData),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-        vd_deletion_queue_push_buffer(&frame_data->deletion_queue, &scene_data_buffer);
-
         {
-            VD_R_GPuSceneData *scene_data = (VD_R_GPuSceneData*)vd_renderer_map_buffer(
-                renderer,
-                &scene_data_buffer);
-            *scene_data = (VD_R_GPuSceneData)
-            {
-                .proj = GLM_MAT4_IDENTITY_INIT,
-            };
-
-            vd_renderer_unmap_buffer(renderer, &scene_data_buffer);
-
-            VkDescriptorSet global_descriptor = vd_descriptor_allocator_allocate(
+            VkDescriptorSet image_set = vd_descriptor_allocator_allocate(
                 &frame_data->descriptor_allocator,
-                renderer->descriptors.scene_data,
+                renderer->descriptors.single_image,
                 0);
-
             vd_r_write_descriptor_sets(
-                global_descriptor,
+                image_set,
                 & (VD_R_WriteDescriptorSetsInfo)
                 {
                     .device = renderer->device,
                     .num_entries = 1,
                     .entries = (VD_R_DescriptorSetEntry[])
                     {
-                        (VD_R_DescriptorSetEntry)
-                        {
-                            .binding = 0,
-                            .type = VD_R_DESCRIPTOR_SET_ENTRY_BUFFER,
-                            .t = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                            .buffer = (VkDescriptorBufferInfo) {
-                                .buffer = scene_data_buffer.buffer,
-                                .offset = 0,
-                                .range = sizeof(VD_R_GPuSceneData),
+                        (VD_R_DescriptorSetEntry) {
+                            .image = (VkDescriptorImageInfo) {
+                                .sampler = renderer->samplers.linear,
+                                .imageView = renderer->images.checker_magenta.view,
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                             },
+                            .t = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            .type = VD_R_DESCRIPTOR_SET_ENTRY_IMAGE,
                         },
                     },
                 },
                 VD_MM_FRAME_ALLOCATOR());
+
+            vkCmdBindDescriptorSets(
+                cmd,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                renderer->pipelines.pbropaque.layout,
+                0,
+                1,
+                (VkDescriptorSet[])
+                {
+                    image_set,
+                },
+                0,
+                0);
         }
 
         vkCmdBindIndexBuffer(cmd, renderer->meshes.sphere.index.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -1765,9 +1925,6 @@ static void render_window_surface(
             .pWaitSemaphores = &frame_data->sem_present_image,
         });
 
-    vd_descriptor_allocator_clear(&frame_data->descriptor_allocator);
-
-    vd_deletion_queue_flush(&frame_data->deletion_queue);
 }
 
 VD_R_AllocatedBuffer vd_renderer_create_buffer(
@@ -1818,6 +1975,142 @@ VkDevice vd_renderer_get_device(VD_Renderer *renderer)
 void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
 {
     vmaDestroyBuffer(renderer->allocator, buffer->buffer, buffer->allocation);
+}
+
+VD_R_AllocatedImage vd_renderer_create_texture(
+    VD_Renderer *renderer,
+    VD_R_TextureCreateInfo *info)
+{
+    VD_R_AllocatedImage result = {};
+    result.extent = info->size;
+    result.format = info->format;
+
+    u32 mip_levels = 1;
+    if (info->mimapped) {
+        mip_levels = floorf(log2f(glm_max(info->size.width, info->size.height))) + 1;
+    }
+
+    VD_VK_CHECK(vmaCreateImage(
+        renderer->allocator,
+        & (VkImageCreateInfo)
+        {
+            .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .format         = info->format,
+            .extent         = info->size,
+            .usage          = info->usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            .imageType      = VK_IMAGE_TYPE_2D,
+            .mipLevels      = mip_levels,
+            .arrayLayers    = 1,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .tiling         = VK_IMAGE_TILING_OPTIMAL,
+
+        },
+        & (VmaAllocationCreateInfo)
+        {
+            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+            .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        },
+        &result.image,
+        &result.allocation,
+        0));
+
+    VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (info->format == VK_FORMAT_D32_SFLOAT) {
+        aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
+
+    VD_VK_CHECK(vkCreateImageView(
+        renderer->device,
+        & (VkImageViewCreateInfo)
+        {
+            .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .format             = info->format,
+            .image              = result.image,
+            .viewType           = VK_IMAGE_VIEW_TYPE_2D,
+            .subresourceRange   =
+            {
+                .aspectMask     = aspect_flags,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            }
+        },
+        0,
+        &result.view));
+
+    return result;
+}
+
+void vd_renderer_upload_texture_data(
+    VD_Renderer *renderer,
+    VD_R_AllocatedImage *image,
+    void *data,
+    size_t size)
+{
+    size_t data_size = image->extent.width * image->extent.height * image->extent.depth * 4;
+
+    if (data_size != size)
+    {
+        VD_LOG("Renderer", "vd_renderer_upload_texture_data(): size != data_size!");
+    }
+
+    VD_R_AllocatedBuffer staging = vd_renderer_create_buffer(
+        renderer,
+        data_size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    void *staging_ptr = vd_renderer_map_buffer(renderer, &staging);
+    memcpy(staging_ptr, data, data_size);
+    vd_renderer_unmap_buffer(renderer, &staging);
+
+    VkCommandBuffer cmd = vd_renderer_imm_begin(renderer);
+    {
+        vd_vk_image_transition(
+            cmd,
+            image->image,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        vkCmdCopyBufferToImage(
+            cmd,
+            staging.buffer,
+            image->image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            & (VkBufferImageCopy)
+            {
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+                .imageSubresource = {
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                },
+                .imageExtent = image->extent,
+            });
+
+        vd_vk_image_transition(
+            cmd,
+            image->image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    }
+    vd_renderer_imm_end(renderer);
+
+    vd_renderer_destroy_buffer(renderer, &staging);
+}
+
+void vd_renderer_destroy_texture(
+    VD_Renderer *renderer,
+    VD_R_AllocatedImage *image)
+{
+    vkDestroyImageView(renderer->device, image->view, 0);
+    vmaDestroyImage(renderer->allocator, image->image, image->allocation);
 }
 
 VD_R_GPUMesh vd_renderer_upload_mesh(
@@ -1915,7 +2208,8 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
             continue;
         }
 
-        WindowSurfaceComponent *ws = ecs_get(it->world, it->entities[i], WindowSurfaceComponent);
+        WindowSurfaceComponent *ws =
+            (WindowSurfaceComponent*)ecs_get(it->world, it->entities[i], WindowSurfaceComponent);
 
         VD_LOG_FMT(
             "Renderer",

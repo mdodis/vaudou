@@ -212,6 +212,18 @@ VD_INLINE umm vd_free(VD_Allocator *allocator, umm ptr, size_t size)
     return allocator->proc_alloc(ptr, size, 0, allocator->c);
 }
 
+/* ----COLORS------------------------------------------------------------------------------------ */
+
+VD_INLINE u32 vd_pack_unorm_r8g8b8a8(float v[4])
+{
+    return (u32)(
+        ((u8)(v[0] * 255.f)) <<  0 |
+        ((u8)(v[1] * 255.f)) <<  8 |
+        ((u8)(v[2] * 255.f)) << 16 |
+        ((u8)(v[3] * 255.f)) << 24
+    );
+}
+
 /* ----LOCAL ABBREVIATIONS----------------------------------------------------------------------- */
 #if VD_ABBREVIATIONS
 #define _impossible(x) VD_IMPOSSIBLE(x)

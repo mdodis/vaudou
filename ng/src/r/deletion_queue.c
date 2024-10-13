@@ -8,13 +8,19 @@ void vd_deletion_queue_init(VD_DeletionQueue *dq, VD_DeletionQueueInitInfo *info
     dq->renderer = info->renderer;
 
     dq->images = 0;
-    dq->pipeline_and_layouts = 0;
-    dq->meshes = 0;
-    dq->buffers = 0;
     array_init(dq->images, &dq->allocator);
+
+    dq->pipeline_and_layouts = 0;
     array_init(dq->pipeline_and_layouts, &dq->allocator);
+
+    dq->meshes = 0;
     array_init(dq->meshes, &dq->allocator);
+
+    dq->buffers = 0;
     array_init(dq->buffers, &dq->allocator);
+
+    dq->allocated_images = 0;
+    array_init(dq->allocated_images , &dq->allocator);
 }
 
 void vd_deletion_queue_push_pipeline_and_layout(
@@ -31,6 +37,11 @@ void vd_deletion_queue_push_vkimage(VD_DeletionQueue *dq, VkImage image)
     array_add(dq->images, image);
 }
 
+void vd_deletion_queue_push_image(VD_DeletionQueue *dq, VD_R_AllocatedImage image)
+{
+    array_add(dq->allocated_images, image);
+}
+
 void vd_deletion_queue_push_gpumesh(VD_DeletionQueue *dq, VD_R_GPUMesh *mesh)
 {
     array_add(dq->meshes, *mesh);
@@ -44,6 +55,10 @@ void vd_deletion_queue_push_buffer(VD_DeletionQueue *dq, VD_R_AllocatedBuffer *b
 void vd_deletion_queue_flush(VD_DeletionQueue *dq)
 {
     VkDevice device = vd_renderer_get_device(dq->renderer);
+
+    for (int i = 0; i < array_len(dq->allocated_images); ++i) {
+        vd_renderer_destroy_texture(dq->renderer, &dq->allocated_images[i]);
+    }
 
     for (int i = 0; i < array_len(dq->buffers); ++i) {
         vd_renderer_destroy_buffer(dq->renderer, &dq->buffers[i]);

@@ -16,6 +16,7 @@ typedef struct {
     VD_ARRAY VD_DeletionQueuePipelineAndLayout  *pipeline_and_layouts;
     VD_ARRAY VD_R_GPUMesh                       *meshes;
     VD_ARRAY VD_R_AllocatedBuffer               *buffers;
+    VD_ARRAY VD_R_AllocatedImage                *allocated_images;
     VD_Allocator                                allocator;
 } VD_DeletionQueue;
 
@@ -30,6 +31,7 @@ void vd_deletion_queue_push_pipeline_and_layout(
     VkPipeline pipeline,
     VkPipelineLayout layout);
 void vd_deletion_queue_push_vkimage(VD_DeletionQueue *dq, VkImage image);
+void vd_deletion_queue_push_image(VD_DeletionQueue *dq, VD_R_AllocatedImage image);
 void vd_deletion_queue_push_gpumesh(VD_DeletionQueue *dq, VD_R_GPUMesh *mesh);
 
 void vd_deletion_queue_push_buffer(VD_DeletionQueue *dq, VD_R_AllocatedBuffer *buffer);

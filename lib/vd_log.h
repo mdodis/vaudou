@@ -49,6 +49,14 @@ typedef struct {
 
 extern VD_Log *VD__Log;
 
+#ifndef VD_LOG_ENABLE_DBG
+#define VD_LOG_ENABLE_DBG 1
+#endif
+
+#ifndef VD_LOG_ENABLE_WRN
+#define VD_LOG_ENABLE_WRN 1
+#endif
+
 #define VD_LOG_GET()  (VD__Log)
 #define VD_LOG_SET(x) (VD__Log = (x))
 #define VD_LOG_RESET() \
@@ -72,8 +80,27 @@ extern VD_Log *VD__Log;
 		fclose(f);  								   \
 	} while (0)
 
-#define VD_LOG_FMT(category, fmt, ...) VD_LOG_1("[" category "]: " fmt "\n", __VA_ARGS__)
+#define VD_LOG_FMT(category, fmt, ...) VD_LOG_1("[" category "/LOG]: " fmt "\n", __VA_ARGS__)
 #define VD_LOG(category, message) VD_LOG_FMT(category, "%{cstr}", message)
+
+#if VD_LOG_ENABLE_DBG
+#define VD_DBG_FMT(category, fmt, ...) VD_LOG_1("[" category "/DBG]: " fmt "\n", __VA_ARGS__)
+#define VD_DBG(category, message) VD_DBG_FMT(category, "%{cstr}", message)
+#else
+#define VD_DBG_FMT(category, fmt, ...)
+#define VD_DBG(category, message)
+#endif
+
+#define VD_ERR_FMT(category, fmt, ...) VD_LOG_1("[" category "/ERR]: " fmt "\n", __VA_ARGS__)
+#define VD_ERR(category, message) VD_ERR_FMT(category, "%{cstr}", message)
+
+#if VD_LOG_ENABLE_WRN
+#define VD_WRN_FMT(category, fmt, ...) VD_LOG_1("[" category "/WRN]: " fmt "\n", __VA_ARGS__)
+#define VD_WRN(category, message) VD_WRN_FMT(category, "%{cstr}", message)
+#else
+#define VD_WRN_FMT(category, fmt, ...)
+#define VD_WRN(category, message)
+#endif
 
 #endif // !VD_LOG_H
 

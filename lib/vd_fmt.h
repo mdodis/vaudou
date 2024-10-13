@@ -284,7 +284,7 @@ static struct {
     VD_FmtTable *lut;
     size_t       n;
 } _vd_g = {
-    _VD_Fmt_Def_Lut,
+    (VD_FmtTable*) _VD_Fmt_Def_Lut,
     sizeof(_VD_Fmt_Def_Lut) / sizeof(_VD_Fmt_Def_Lut[0]),
 };
 

@@ -168,7 +168,8 @@ void vd_w_sdl_get_required_extensions(u32 *num_extensions, const char ***extensi
 {
     ensure_sdl_initialized();
     SDL_Window *dummy_window = SDL_CreateWindow("fake", 640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
-    *extensions = SDL_Vulkan_GetInstanceExtensions(num_extensions);
+    *extensions = 
+        (const char**)SDL_Vulkan_GetInstanceExtensions(num_extensions);
     SDL_DestroyWindow(dummy_window);
 }
 

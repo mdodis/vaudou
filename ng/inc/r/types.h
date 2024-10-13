@@ -64,6 +64,14 @@ void vd_r_generate_cube_data(
     vec3 extents,
     VD_Allocator *allocator);
 
+void *vd_r_generate_checkerboard(
+    u32 even_color,
+    u32 odd_color,
+    int width,
+    int height,
+    size_t *size,
+    VD_Allocator *allocator);
+
 void vd_r_perspective(mat4 proj, float fov, float aspect, float znear, float zfar);
 
 #endif // !VD_R_TYPES_H

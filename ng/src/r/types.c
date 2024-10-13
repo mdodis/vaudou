@@ -168,6 +168,27 @@ void vd_r_generate_cube_data(
     }
 }
 
+void *vd_r_generate_checkerboard(
+    u32 even_color,
+    u32 odd_color,
+    int width,
+    int height,
+    size_t *size,
+    VD_Allocator *allocator)
+{
+    *size = width * height * sizeof(even_color);
+
+    void *result = (void*)allocator->proc_alloc(0, 0, *size, allocator->c);
+
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            ((u32*)result)[y*width + x] = ((x % 2) ^ (y % 2)) ? even_color : odd_color;
+        }
+    }
+
+    return result;
+}
+
 void vd_r_perspective(mat4 proj, float fov, float aspect, float znear, float zfar)
 {
     glm_perspective(fov, aspect, znear, zfar, proj);

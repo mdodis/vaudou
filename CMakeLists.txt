@@ -7,6 +7,7 @@ include(CTest)
 
 option(VD_OPTION_ENABLE_VALIDATION_LAYERS "Enable Vulkan validation layers" ON)
 option(VD_OPTION_ENABLE_VULKAN_OBJECT_NAMES "Enable Vulkan object names" ON)
+option(VD_OPTION_ENABLE_ASAN "Enable Address Sanitizer" OFF)
 
 set(VD_TRIPLET $<$<CONFIG:Debug>:debug>$<$<CONFIG:Release>:release>-$<$<PLATFORM_ID:Darwin>:osx>$<$<PLATFORM_ID:Linux>:linux>$<$<PLATFORM_ID:Windows>:win>$<$<CONFIG:Debug>:64>$<$<CONFIG:Release>:64>)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/out-${VD_TRIPLET}/bin)

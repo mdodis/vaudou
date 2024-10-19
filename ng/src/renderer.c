@@ -4,6 +4,7 @@
 // - Move renderer deletion queue to VD_MM_GLOBAL
 // - Move window deletion queue to VD_MM_ENTITY
 #define VD_INTERNAL_SOURCE_FILE 1
+#include "r/texture_system.h"
 #include "vd_common.h"
 #include "renderer.h"
 
@@ -42,6 +43,9 @@ struct VD_Renderer {
     ecs_world_t                         *world;
     VD_Instance                         *app_instance;
     VkInstance                          instance;
+
+// ----SYSTEMS--------------------------------------------------------------------------------------
+    VD_R_TextureSystem                  textures;
 
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;

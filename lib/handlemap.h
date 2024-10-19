@@ -8,7 +8,8 @@
 typedef struct {
     size_t          initial_capacity;
     VD_Allocator    *allocator;
-    void            (*on_free_object)(void *object);
+    void            (*on_free_object)(void *object, void *c);
+    void            *c;
 } VD_HandleMapInitInfo;
 
 typedef struct VD_HandleMap VD_HandleMap;
@@ -44,6 +45,9 @@ typedef struct {
 #define VD_HANDLEMAP_INIT(m, ...) \
     (m = vd_handlemap__init(sizeof(*m), &(VD_HandleMapInitInfo)__VA_ARGS__))
 
+#define VD_HANDLEMAP_DEINIT(m) \
+    (vd_handlemap__deinit((VD_HandleMap*)(m)))
+
 /**
  * @brief Create a handle with an object
  */
@@ -61,5 +65,12 @@ void *vd_handle_use(VD_Handle *handle, VD_HandleMapUseMode mode);
 VD_Handle vd_handlemap_copy(VD_Handle *handle);
 
 void vd_handle_drop(VD_Handle *handle);
+
+void vd_handlemap__deinit(VD_HandleMap *map);
+
+#ifdef VD_ABBREVIATIONS
+#define handlemap VD_HANDLEMAP
+#define Handle    VD_Handle
+#endif
 
 #endif // !VD_HANDLEMAP_H

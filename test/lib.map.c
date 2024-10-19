@@ -95,7 +95,7 @@ UTEST(intmap, grow)
     vd_intmap_deinit(&map);
 }
 
-static void string_free(void *object) {
+static void string_free(void *object, void *c) {
     free(object);
 }
 

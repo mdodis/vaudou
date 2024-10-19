@@ -14,7 +14,8 @@ typedef struct VD_HandleMap {
     size_t          elsize;
     u64             next_id;
     VD_Allocator    allocator;
-    void            (*on_free_object)(void *object);
+    void            (*on_free_object)(void *object, void *c);
+    void            *c;
 } VD_HandleMap;
 
 typedef struct {
@@ -33,7 +34,7 @@ static EntryMetadata *get_slot_metadata_ptr(VD_HandleMap *map, u64 slot)
     return (EntryMetadata*)(map->arr + (sizeof(EntryMetadata) + map->elsize) * slot);
 }
 
-static void free_object_null(void *object) {}
+static void free_object_null(void *object, void *c) {}
 
 void *vd_handlemap__init(size_t elsize, VD_HandleMapInitInfo *info)
 {
@@ -53,6 +54,7 @@ void *vd_handlemap__init(size_t elsize, VD_HandleMapInitInfo *info)
     hdr->arr_cap    = info->initial_capacity;
     hdr->arr_len    = 0;
     hdr->next_id    = 1;
+    hdr->c          = info->c;
 
     vd_intmap_init(&hdr->idmap, &hdr->allocator, info->initial_capacity, 0);
 
@@ -119,7 +121,11 @@ VD_Handle vd_handlemap_copy(VD_Handle *handle)
     VD_HandleMap *map = handle->map;
     u64 slot;
     if (!vd_intmap_tryget(&map->idmap, handle->id, &slot)) {
-        return (VD_Handle) {};
+        VD_Handle null = (VD_Handle) {
+            .id = 0,
+            .map = 0,
+        };
+        return null;
     }
 
     EntryMetadata *metadata_ptr = get_slot_metadata_ptr(map, slot);
@@ -145,8 +151,24 @@ void vd_handle_drop(VD_Handle *handle)
         assert(!(metadata_ptr->refcount < 0));
         if (metadata_ptr->refcount == 0) {
             void *value_ptr = get_slot_value_ptr(map, slot);
-            map->on_free_object(value_ptr);
+            map->on_free_object(value_ptr, map->c);
+            metadata_ptr->id = 0;
         }
     }
     handle->id = 0;
+}
+
+void vd_handlemap__deinit(VD_HandleMap *map)
+{
+    vd_intmap_deinit(&map->idmap);
+
+    for (u64 i = 0; i < map->arr_len; ++i) {
+        EntryMetadata *metadata = get_slot_metadata_ptr(map, i);
+
+        if (metadata->id == 0) {
+            continue;
+        }
+
+        map->on_free_object(get_slot_value_ptr(map, i), map->c);
+    }
 }

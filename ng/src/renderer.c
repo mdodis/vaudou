@@ -89,9 +89,10 @@ struct VD_Renderer {
     } meshes;
 
     struct {
-        VD_R_AllocatedImage     black;
-        VD_R_AllocatedImage     white;
-        VD_R_AllocatedImage     checker_magenta;
+        
+        HandleOf(VD_R_AllocatedImage) black;
+        HandleOf(VD_R_AllocatedImage) white;
+        HandleOf(VD_R_AllocatedImage) checker_magenta;
     } images;
 
     struct {
@@ -670,6 +671,12 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             .renderer = renderer,
         });
 
+// ----SYSTEMS--------------------------------------------------------------------------------------
+    vd_texture_system_init(&renderer->textures, & (VD_R_TextureSystemInitInfo) {
+        .allocator = renderer->allocator,
+        .device = renderer->device,
+    });
+
 // ----SHDC-----------------------------------------------------------------------------------------
     renderer->shdc = vd_shdc_create();
     vd_shdc_init(
@@ -828,37 +835,37 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             renderer,
             & (VD_R_TextureCreateInfo)
             {
-                .size       = { 1, 1, 1 },
+                .extent     = { 1, 1, 1 },
                 .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
                 .format     = VK_FORMAT_R8G8B8A8_UNORM,
-                .mimapped   = 0,
+                .mipmapping = {
+                    .on = 0,
+                },
             });
 
         vd_renderer_upload_texture_data(
             renderer,
-            &renderer->images.white,
+            USE_HANDLE(renderer->images.white, VD_R_AllocatedImage),
             &white,
             sizeof(white));
-
-        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.white);
 
         renderer->images.black = vd_renderer_create_texture(
             renderer,
             & (VD_R_TextureCreateInfo)
             {
-                .size       = { 1, 1, 1 },
+                .extent     = { 1, 1, 1 },
                 .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
                 .format     = VK_FORMAT_R8G8B8A8_UNORM,
-                .mimapped   = 0,
+                .mipmapping = {
+                    .on = 0,
+                },
             });
 
         vd_renderer_upload_texture_data(
             renderer,
-            &renderer->images.black,
+            USE_HANDLE(renderer->images.black, VD_R_AllocatedImage),
             &black,
             sizeof(black));
-
-        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.black);
 
         size_t checkers_size;
         void *checkers = vd_r_generate_checkerboard(
@@ -873,19 +880,20 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             renderer,
             & (VD_R_TextureCreateInfo)
             {
-                .size       = { 16, 16, 1 },
+                .extent     = { 16, 16, 1 },
                 .usage      = VK_IMAGE_USAGE_SAMPLED_BIT,
                 .format     = VK_FORMAT_R8G8B8A8_UNORM,
-                .mimapped   = 0,
+                .mipmapping = {
+                    .on = 0,
+                },
             });
 
         vd_renderer_upload_texture_data(
             renderer,
-            &renderer->images.checker_magenta,
+            USE_HANDLE(renderer->images.checker_magenta, VD_R_AllocatedImage),
             checkers,
             checkers_size);
 
-        vd_deletion_queue_push_image(&renderer->deletion_queue, renderer->images.checker_magenta);
     }
 // ----SAMPLERS-------------------------------------------------------------------------------------
     {
@@ -1634,6 +1642,7 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
 int vd_renderer_deinit(VD_Renderer *renderer)
 {
+    vd_texture_system_deinit(&renderer->textures);
     vkDestroyCommandPool(renderer->device, renderer->imm.command_pool, 0);
     vkDestroyFence(renderer->device, renderer->imm.fence, 0);
     vkDestroyDescriptorSetLayout(renderer->device, renderer->descriptors.scene_data, 0);
@@ -1813,6 +1822,10 @@ static void render_window_surface(
             &constants);
 
         {
+            VD_R_AllocatedImage *checker_magenta = USE_HANDLE(
+                renderer->images.checker_magenta,
+                VD_R_AllocatedImage);
+
             VkDescriptorSet image_set = vd_descriptor_allocator_allocate(
                 &frame_data->descriptor_allocator,
                 renderer->descriptors.single_image,
@@ -1828,7 +1841,7 @@ static void render_window_surface(
                         (VD_R_DescriptorSetEntry) {
                             .image = (VkDescriptorImageInfo) {
                                 .sampler = renderer->samplers.linear,
-                                .imageView = renderer->images.checker_magenta.view,
+                                .imageView = checker_magenta->view,
                                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                             },
                             .t = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1981,69 +1994,11 @@ void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buf
     vmaDestroyBuffer(renderer->allocator, buffer->buffer, buffer->allocation);
 }
 
-VD_R_AllocatedImage vd_renderer_create_texture(
+VD_Handle vd_renderer_create_texture(
     VD_Renderer *renderer,
     VD_R_TextureCreateInfo *info)
 {
-    VD_R_AllocatedImage result = {};
-    result.extent = info->size;
-    result.format = info->format;
-
-    u32 mip_levels = 1;
-    if (info->mimapped) {
-        mip_levels = floorf(log2f(glm_max(info->size.width, info->size.height))) + 1;
-    }
-
-    VD_VK_CHECK(vmaCreateImage(
-        renderer->allocator,
-        & (VkImageCreateInfo)
-        {
-            .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .format         = info->format,
-            .extent         = info->size,
-            .usage          = info->usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            .imageType      = VK_IMAGE_TYPE_2D,
-            .mipLevels      = mip_levels,
-            .arrayLayers    = 1,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .tiling         = VK_IMAGE_TILING_OPTIMAL,
-
-        },
-        & (VmaAllocationCreateInfo)
-        {
-            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
-            .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        },
-        &result.image,
-        &result.allocation,
-        0));
-
-    VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
-    if (info->format == VK_FORMAT_D32_SFLOAT) {
-        aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    }
-
-    VD_VK_CHECK(vkCreateImageView(
-        renderer->device,
-        & (VkImageViewCreateInfo)
-        {
-            .sType              = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .format             = info->format,
-            .image              = result.image,
-            .viewType           = VK_IMAGE_VIEW_TYPE_2D,
-            .subresourceRange   =
-            {
-                .aspectMask     = aspect_flags,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1,
-            }
-        },
-        0,
-        &result.view));
-
-    return result;
+    return vd_texture_system_new(&renderer->textures, info);
 }
 
 void vd_renderer_upload_texture_data(

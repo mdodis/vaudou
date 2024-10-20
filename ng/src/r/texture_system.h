@@ -16,17 +16,10 @@ typedef struct {
     VmaAllocator    allocator;
 } VD_R_TextureSystemInitInfo;
 
-typedef struct {
-    VkExtent3D          extent;
-    VkFormat            format;
-    VkImageUsageFlags   usage;
-    struct {
-        int on;
-    } mipmapping;
-} VD_R_TextureSystemNewInfo;
-
 int vd_texture_system_init(VD_R_TextureSystem *s, VD_R_TextureSystemInitInfo *info);
-VD_Handle vd_texture_system_new(VD_R_TextureSystem *s, VD_R_TextureSystemNewInfo *info);
+HandleOf(VD_R_AllocatedImage) vd_texture_system_new(
+    VD_R_TextureSystem *s,
+    VD_R_TextureCreateInfo *info);
 void vd_texture_system_deinit(VD_R_TextureSystem *s);
 
 #endif // !VD_R_TEXTURE_SYSTEM_H

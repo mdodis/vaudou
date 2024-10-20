@@ -68,6 +68,9 @@ void vd_handle_drop(VD_Handle *handle);
 
 void vd_handlemap__deinit(VD_HandleMap *map);
 
+#define HandleOf(t) VD_Handle
+#define USE_HANDLE(h, t) ((t*)vd_handle_use(&h, 0))
+
 #ifdef VD_ABBREVIATIONS
 #define handlemap VD_HANDLEMAP
 #define Handle    VD_Handle

@@ -17,7 +17,7 @@ int vd_texture_system_init(VD_R_TextureSystem *s, VD_R_TextureSystemInitInfo *in
     return 0;
 }
 
-Handle vd_texture_system_new(VD_R_TextureSystem *s, VD_R_TextureSystemNewInfo *info)
+Handle vd_texture_system_new(VD_R_TextureSystem *s, VD_R_TextureCreateInfo *info)
 {
     VD_R_AllocatedImage result = {};
     result.extent = info->extent;
@@ -91,7 +91,7 @@ void vd_texture_system_deinit(VD_R_TextureSystem *s)
 
 static void free_texture(void *object, void *c)
 {
-    VD_R_TextureSystem *s;
+    VD_R_TextureSystem *s = (VD_R_TextureSystem*)c;
     VD_R_AllocatedImage *image = (VD_R_AllocatedImage*)object;
     vkDestroyImageView(s->device, image->view, 0);
     vmaDestroyImage(s->allocator, image->image, image->allocation);

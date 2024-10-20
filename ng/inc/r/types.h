@@ -4,6 +4,7 @@
 #include "vd_common.h"
 #include "volk.h"
 #include "vk_mem_alloc.h"
+#include "handlemap.h"
 
 #include "cglm/cglm.h"
 
@@ -45,6 +46,15 @@ typedef struct {
     mat4    proj;
     mat4    viewproj;
 } VD_R_GPuSceneData;
+
+typedef struct {
+    VkExtent3D          extent;
+    VkFormat            format;
+    VkImageUsageFlags   usage;
+    struct {
+        int on;
+    } mipmapping;
+} VD_R_TextureCreateInfo;
 
 void vd_r_generate_sphere_data(
     VD_R_Vertex **vertices,

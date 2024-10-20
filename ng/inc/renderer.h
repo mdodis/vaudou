@@ -70,14 +70,7 @@ void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffe
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
 
-typedef struct {
-    VkExtent3D          size;
-    VkFormat            format;
-    VkImageUsageFlags   usage;
-    int                 mimapped;
-} VD_R_TextureCreateInfo;
-
-VD_R_AllocatedImage vd_renderer_create_texture(
+VD_Handle vd_renderer_create_texture(
     VD_Renderer *renderer,
     VD_R_TextureCreateInfo *info);
 

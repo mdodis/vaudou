@@ -37,6 +37,7 @@ add_dependencies(vdng vdng_public_headers)
 file(GLOB PRECOMP_SHADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/shd/*.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/shd/*.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shd/*.glsl
 )
 
 # get_target_property(LUA_EXECUTABLE luajit::cli LOCATION)

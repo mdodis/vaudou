@@ -6,7 +6,15 @@
 typedef struct VD_SHDC VD_SHDC;
 
 typedef struct {
+    const char *file;
+    const char *code;
+} VD_SHDC_IncludeMapping;
+
+typedef struct {
     void (*cb_error)(const char *what, const char *msg, const char *extmsg);
+
+    u32                     num_include_mappings;
+    VD_SHDC_IncludeMapping  *include_mappings;
 } VD_SHDC_InitInfo;
 
 typedef enum {

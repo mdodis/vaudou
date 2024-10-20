@@ -1,5 +1,7 @@
 "#version 450\n"
 "#extension GL_EXT_buffer_reference : require\n"
+"#extension GL_GOOGLE_include_directive : require\n"
+"#include \"vd.glsl\"\n"
 "\n"
 "\n"
 "layout (location = 0) out vec3 outColor;\n"

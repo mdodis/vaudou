@@ -684,6 +684,10 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         & (VD_SHDC_InitInfo)
         {
             .cb_error = vd_shdc_log_error,
+            .num_include_mappings = 1,
+            .include_mappings = (VD_SHDC_IncludeMapping[]) {
+                (VD_SHDC_IncludeMapping) { .file = "vd.glsl", .code = VD_GLSL },
+            },
         });
 
 // ----DEFAULT FORMATS------------------------------------------------------------------------------

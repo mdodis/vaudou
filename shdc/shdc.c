@@ -3,8 +3,17 @@
 #include "resource_limits_c.h"
 #include <stdlib.h>
 
+#include "array.h"
+
+enum {
+    MAX_INCLUDE_MAPPINGS = 10,
+};
+
 struct VD_SHDC {
     VD_SHDC_InitInfo info;
+
+    u32                     num_include_mappings;
+    glsl_include_result_t   include_mappings[MAX_INCLUDE_MAPPINGS];
 };
 
 static glslang_stage_t shdc_stage_to_glslang_stage(VD_SHDC_ShaderStage s)
@@ -27,7 +36,52 @@ VD_SHDC *vd_shdc_create()
 void vd_shdc_init(VD_SHDC *shdc, VD_SHDC_InitInfo *info)
 {
     shdc->info = *info;
+
+    shdc->num_include_mappings = info->num_include_mappings;
+
+    for (u32 i = 0; i < info->num_include_mappings; ++i) {
+        shdc->include_mappings[i].header_name = info->include_mappings[i].file;
+        shdc->include_mappings[i].header_data = info->include_mappings[i].code;
+        shdc->include_mappings[i].header_length = strlen(info->include_mappings[i].code);
+    }
+
     glslang_initialize_process();
+}
+
+static glsl_include_result_t null_result = { 0 };
+
+/* Callback for local file inclusion */
+static glsl_include_result_t* glsl_include_local(
+    void* ctx,
+    const char* header_name,
+    const char* includer_name,
+    size_t include_depth)
+{
+    return 0;
+}
+
+/* Callback for system file inclusion */
+static glsl_include_result_t* glsl_include_system(
+    void* ctx,
+    const char* header_name,
+    const char* includer_name,
+    size_t include_depth)
+{
+    VD_SHDC *shdc = (VD_SHDC*)ctx;
+
+    for (u32 i = 0; i < shdc->num_include_mappings; ++i) {
+        if (strcmp(shdc->include_mappings[i].header_name, header_name) == 0) {
+            return &shdc->include_mappings[i];
+        }
+    }
+
+    return 0;
+}
+
+/* Callback for include result destruction */
+static int glsl_free_include_result(void* ctx, glsl_include_result_t* result)
+{
+    return 0;
 }
 
 int vd_shdc_compile(
@@ -52,6 +106,12 @@ int vd_shdc_compile(
         .forward_compatible = 0,
         .messages = GLSLANG_MSG_DEFAULT_BIT,
         .resource = glslang_default_resource(),
+        .callbacks_ctx = (void*)shdc,
+        .callbacks = {
+            .include_local = glsl_include_local,
+            .include_system = glsl_include_system,
+            .free_include_result = glsl_free_include_result,
+        },
     };
     glslang_shader_t *shader = glslang_shader_create(&input);
 

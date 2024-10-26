@@ -70,9 +70,21 @@ void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffe
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
 
-VD_Handle vd_renderer_create_texture(
+HandleOf(VD_R_AllocatedImage) vd_renderer_create_texture(
     VD_Renderer *renderer,
     VD_R_TextureCreateInfo *info);
+
+HandleOf(VD_R_GPUMesh) vd_renderer_create_mesh(
+    VD_Renderer *renderer,
+    VD_R_MeshCreateInfo *info);
+
+void vd_renderer_write_mesh(
+    VD_Renderer *renderer,
+    VD_R_MeshWriteInfo *info);
+
+HandleOf(GPUShader) vd_renderer_create_shader(
+    VD_Renderer *renderer,
+    GPUShaderCreateInfo *info);
 
 void vd_renderer_upload_texture_data(
     VD_Renderer *renderer,
@@ -83,14 +95,6 @@ void vd_renderer_upload_texture_data(
 void vd_renderer_destroy_texture(
     VD_Renderer *renderer,
     VD_R_AllocatedImage *image);
-
-
-VD_R_GPUMesh vd_renderer_upload_mesh(
-    VD_Renderer *renderer,
-    u32 *indices,
-    size_t num_indices,
-    VD_R_Vertex *vertices,
-    size_t num_vertices);
 
 // ----OBSERVERS------------------------------------------------------------------------------------
 extern void RendererOnWindowComponentSet(ecs_iter_t *it);

@@ -7,7 +7,7 @@
 "//output write\n"
 "layout (location = 0) out vec4 outFragColor;\n"
 "\n"
-"layout (set = 0, binding = 0) uniform sampler2D dsTexture;\n"
+"layout (set = 1, binding = 0) uniform sampler2D dsTexture;\n"
 "\n"
 "void main() \n"
 "{\n"

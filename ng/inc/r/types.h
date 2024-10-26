@@ -5,8 +5,20 @@
 #include "volk.h"
 #include "vk_mem_alloc.h"
 #include "handlemap.h"
+#include "vd_meta.h"
 
 #include "cglm/cglm.h"
+#include "cglm/quat.h"
+
+enum {
+    VD_MAX_SHADERS_PER_MATERIAL = 2,
+    VD_MAX_BINDINGS_PER_SHADER  = 4,
+    VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL = 3,
+    VD_PASS_OPAQUE = 1000,
+    VD_PASS_TRANSPARENT = 2000,
+    VD_PASS_FINAL = 4000,
+    VD_PASS_MAX = 100000,
+};
 
 typedef struct {
     VkImage         image;
@@ -37,7 +49,6 @@ typedef struct {
 } VD_R_GPUMesh;
 
 typedef struct {
-    mat4            world_matrix;
     VkDeviceAddress vertex_buffer;
 } VD_R_GPUPushConstants;
 
@@ -47,6 +58,7 @@ typedef struct {
     mat4    viewproj;
 } VD_R_GPuSceneData;
 
+
 typedef struct {
     VkExtent3D          extent;
     VkFormat            format;
@@ -55,6 +67,115 @@ typedef struct {
         int on;
     } mipmapping;
 } VD_R_TextureCreateInfo;
+
+typedef struct {
+    size_t          num_vertices;
+    size_t          num_indices;
+} VD_R_MeshCreateInfo;
+
+typedef struct {
+    HandleOf(VD_R_GPUMesh)  mesh;
+    VD_R_Vertex             *vertices;
+    size_t                  num_vertices;
+    u32                     *indices;
+    size_t                  num_indices;
+} VD_R_MeshWriteInfo;
+
+typedef struct {
+    mat4 view;
+    mat4 proj;
+    mat4 obj;
+    vec3 sun_direction;
+    vec3 sun_color;
+} VD_R_SceneData;
+
+// ----SHADERS--------------------------------------------------------------------------------------
+typedef struct {
+    VkShaderModule      module;
+    VkShaderStageFlags  stage;
+} GPUShader;
+
+typedef struct {
+    VkShaderStageFlags  stage;
+    void                *bytecode;
+    size_t              bytecode_size;
+    const char          *sourcecode;
+    size_t              sourcecode_len;
+} GPUShaderCreateInfo;
+
+// ----MATERIALS------------------------------------------------------------------------------------
+typedef enum {
+    BINDING_TYPE_INVALID = 0,
+    BINDING_TYPE_SAMPLER2D,
+    BINDING_TYPE_STRUCT,
+} BindingType;
+
+typedef struct {
+    BindingType type;
+    size_t      struct_size;
+} BindingInfo;
+
+typedef struct {
+    HandleOf(VD_R_GPUShader) shaders[VD_MAX_SHADERS_PER_MATERIAL];
+    u32                      num_shaders;
+    VkPrimitiveTopology      topology;
+    VkPolygonMode            polygon_mode;
+    VkCullModeFlags          cull_mode;
+    VkFrontFace              cull_face;
+    int                      pass;
+    struct {
+        int                  on;
+    } multisample;
+
+    struct {
+        int                  on;
+    } blend;
+
+    struct {
+        int                  on;
+        int                  write;
+        VkCompareOp          cmp_op;
+    } depth_test;
+
+    /** set = 0, binding = x is reserved for system use. */
+    u32         num_bindings;
+    BindingInfo bindings[VD_MAX_BINDINGS_PER_SHADER];
+} MaterialBlueprint;
+
+typedef struct {
+    VkPipeline              pipeline;
+    VkPipelineLayout        layout;
+    VkDescriptorSetLayout   property_layout;
+    u32                     num_buffers;
+    VD_R_AllocatedBuffer    buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
+} GPUMaterial;
+
+typedef struct {
+    BindingInfo binding;
+    union {
+        void                            *pstruct;
+        HandleOf(VD_R_AllocatedImage)   sampler2d;
+    };
+} MaterialProperty;
+
+typedef struct {
+    HandleOf(GPUMaterial)   material;
+    u32                     num_properties;
+    MaterialProperty        *properties;
+} MaterialWriteInfo;
+
+typedef struct {
+    HandleOf(GPUMaterial)   material;
+    int                     pass;
+    VkDescriptorSet         default_set;
+    VkDescriptorSet         property_set;
+} GPUMaterialInstance;
+
+typedef struct {
+    HandleOf(VD_R_GPUMesh)  mesh;
+    u32                     first_index;
+    mat4                    transform;
+} VD_R_Object;
 
 void vd_r_generate_sphere_data(
     VD_R_Vertex **vertices,

@@ -11,8 +11,8 @@ target_include_directories(vdng
     PRIVATE src .)
 
 target_link_libraries(vdng
-    PUBLIC vdlib flecs
-    PRIVATE vdshdc volk amd_vma glslang TracyClient)
+    PUBLIC vdlib flecs amd_vma 
+    PRIVATE vdshdc volk glslang TracyClient)
 
 if (VD_OPTION_ENABLE_VALIDATION_LAYERS)
     target_compile_definitions(vdng PRIVATE VD_ENABLE_VALIDATION_LAYERS)

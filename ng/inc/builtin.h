@@ -1,8 +1,11 @@
 #ifndef VD_BUILTIN_H
 #define VD_BUILTIN_H
+#include "cglm/quat.h"
 #include "vd_common.h"
 
 #include "delegate.h"
+
+#include "r/types.h"
 
 #include "flecs.h"
 #include "cglm/cglm.h"
@@ -75,6 +78,27 @@ extern ECS_SYSTEM_DECLARE(FreeFrameAllocationSystem);
 extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
 
 // ----RENDERER-------------------------------------------------------------------------------------
+typedef struct {
+    vec3 location;
+} LocationComponent;
+
+typedef struct {
+    versor rotation;
+} RotationComponent;
+
+typedef struct {
+    vec3 scale;
+} ScaleComponent;
+
+typedef struct {
+    mat4 world;
+} WorldTransformComponent;
+
+typedef struct {
+    int a;
+
+} StaticMeshComponent;
+
 extern ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents); // EcsOnStore
 extern ECS_SYSTEM_DECLARE(RendererCheckWindowComponentSizeChange);  // EcsOnPostLoad
 extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);

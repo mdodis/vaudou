@@ -4,9 +4,13 @@
 // - Move renderer deletion queue to VD_MM_GLOBAL
 // - Move window deletion queue to VD_MM_ENTITY
 #define VD_INTERNAL_SOURCE_FILE 1
+#include "r/sshader.h"
+#include "r/geo_system.h"
 #include "r/texture_system.h"
+#include "r/smat.h"
 #include "vd_common.h"
 #include "renderer.h"
+#include "default_shaders.h"
 
 #define VD_VK_OPTION_INCLUDE_VULKAN_CUSTOM
 #define VD_VK_IMPLEMENTATION
@@ -32,7 +36,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "default_shaders.h"
 #include "shdc.h"
 
 #include "tracy/TracyC.h"
@@ -46,6 +49,9 @@ struct VD_Renderer {
 
 // ----SYSTEMS--------------------------------------------------------------------------------------
     VD_R_TextureSystem                  textures;
+    VD_R_GeoSystem                      geos;
+    SShader                             sshader;
+    SMat                                smat;
 
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;
@@ -68,24 +74,15 @@ struct VD_Renderer {
     VkFormat                            depth_image_format;
 
     struct {
-        struct {
-            VkPipeline          pipeline;
-            VkShaderModule      svert;
-            VkShaderModule      sfrag;
-            VkPipelineLayout    layout;
-        } pbropaque;
-    } pipelines;
-
-    struct {
         VkFence                 fence;
         VkCommandBuffer         command_buffer;
         VkCommandPool           command_pool;
     } imm;
 
     struct {
-        VD_R_GPUMesh            quad;
-        VD_R_GPUMesh            sphere;
-        VD_R_GPUMesh            cube;
+        HandleOf(VD_R_GPUMesh)  quad;
+        HandleOf(VD_R_GPUMesh)  sphere;
+        HandleOf(VD_R_GPUMesh)  cube;
     } meshes;
 
     struct {
@@ -96,16 +93,8 @@ struct VD_Renderer {
     } images;
 
     struct {
-        VkSampler               nearest;
-        VkSampler               linear;
-    } samplers;
-
-    struct {
-        VkDescriptorSetLayout   scene_data;
-        VkDescriptorSetLayout   single_image;
-    } descriptors;
-
-    VD_SHDC                             *shdc;
+        HandleOf(GPUMaterial)   pbropaque;
+    } materials;
 
 #if VD_VALIDATION_LAYERS
     VkDebugUtilsMessengerEXT            debug_messenger;
@@ -671,28 +660,39 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             .renderer = renderer,
         });
 
+// ----DEFAULT FORMATS------------------------------------------------------------------------------
+    renderer->color_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    renderer->depth_image_format = VK_FORMAT_D32_SFLOAT;
+
 // ----SYSTEMS--------------------------------------------------------------------------------------
     vd_texture_system_init(&renderer->textures, & (VD_R_TextureSystemInitInfo) {
         .allocator = renderer->allocator,
         .device = renderer->device,
     });
 
-// ----SHDC-----------------------------------------------------------------------------------------
-    renderer->shdc = vd_shdc_create();
-    vd_shdc_init(
-        renderer->shdc,
-        & (VD_SHDC_InitInfo)
-        {
-            .cb_error = vd_shdc_log_error,
-            .num_include_mappings = 1,
-            .include_mappings = (VD_SHDC_IncludeMapping[]) {
-                (VD_SHDC_IncludeMapping) { .file = "vd.glsl", .code = VD_GLSL },
-            },
-        });
+    vd_r_geo_system_init(&renderer->geos, & (VD_R_GeoSystemInitInfo) {
+        .allocator = renderer->allocator,
+        .device = renderer->device,
+    });
 
-// ----DEFAULT FORMATS------------------------------------------------------------------------------
-    renderer->color_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    renderer->depth_image_format = VK_FORMAT_D32_SFLOAT;
+    vd_r_sshader_init(&renderer->sshader, & (SShaderInitInfo) {
+        .device = renderer->device,
+    });
+
+    smat_init(&renderer->smat, & (SMatInitInfo) {
+        .device = renderer->device,
+        .allocator = renderer->allocator,
+        .num_set0_bindings = 1,
+        .set0_bindings = (BindingInfo[]) {
+            (BindingInfo)
+            {
+                .type = BINDING_TYPE_STRUCT,
+                .struct_size = sizeof(VD_R_SceneData),
+            }
+        },
+        .color_format = renderer->color_image_format,
+        .depth_format = renderer->depth_image_format,
+    });
 
 // ----IMMEDIATE QUEUE------------------------------------------------------------------------------
 
@@ -768,14 +768,18 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         u32 indices[6] = {0,1,2, 2,1,3};
 
-        renderer->meshes.quad = vd_renderer_upload_mesh(
-            renderer,
-            indices,
-            VD_ARRAY_COUNT(indices),
-            vertices,
-            VD_ARRAY_COUNT(vertices));
+        renderer->meshes.quad = vd_renderer_create_mesh(renderer, & (VD_R_MeshCreateInfo){
+            .num_vertices = VD_ARRAY_COUNT(vertices),
+            .num_indices = VD_ARRAY_COUNT(indices),
+        });
 
-        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.quad);
+        vd_renderer_write_mesh(renderer, & (VD_R_MeshWriteInfo) {
+            .mesh = renderer->meshes.quad,
+            .vertices = vertices,
+            .indices = indices,
+            .num_indices = VD_ARRAY_COUNT(indices),
+            .num_vertices = VD_ARRAY_COUNT(vertices),
+        });
     }
 
     {
@@ -793,14 +797,18 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             16,
             VD_MM_FRAME_ALLOCATOR());
 
-        renderer->meshes.sphere = vd_renderer_upload_mesh(
-            renderer,
-            indices,
-            num_indices,
-            vertices,
-            num_vertices);
+        renderer->meshes.sphere = vd_renderer_create_mesh(renderer, & (VD_R_MeshCreateInfo){
+            .num_vertices = num_vertices,
+            .num_indices = num_indices,
+        });
 
-        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.sphere);
+        vd_renderer_write_mesh(renderer, & (VD_R_MeshWriteInfo) {
+            .mesh = renderer->meshes.sphere,
+            .vertices = vertices,
+            .indices = indices,
+            .num_indices = num_indices,
+            .num_vertices = num_vertices,
+        });
 
     }
 
@@ -818,14 +826,18 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             extents,
             VD_MM_FRAME_ALLOCATOR());
 
-        renderer->meshes.cube = vd_renderer_upload_mesh(
-            renderer,
-            indices,
-            num_indices,
-            vertices,
-            num_vertices);
+        renderer->meshes.cube = vd_renderer_create_mesh(renderer, & (VD_R_MeshCreateInfo){
+            .num_vertices = num_vertices,
+            .num_indices = num_indices,
+        });
 
-        vd_deletion_queue_push_gpumesh(&renderer->deletion_queue, &renderer->meshes.cube);
+        vd_renderer_write_mesh(renderer, & (VD_R_MeshWriteInfo) {
+            .mesh = renderer->meshes.cube,
+            .vertices = vertices,
+            .indices = indices,
+            .num_indices = num_indices,
+            .num_vertices = num_vertices,
+        });
 
     }
 // ----DEFAULT IMAGES-------------------------------------------------------------------------------
@@ -899,189 +911,57 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             checkers_size);
 
     }
-// ----SAMPLERS-------------------------------------------------------------------------------------
-    {
-        VD_VK_CHECK(vkCreateSampler(
-            renderer->device,
-            & (VkSamplerCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                .magFilter = VK_FILTER_NEAREST,
-                .minFilter = VK_FILTER_NEAREST,
-            },
-            0,
-            &renderer->samplers.nearest));
-
-        name_object(
-            renderer,
-            & (VkDebugUtilsObjectNameInfoEXT)
-            {
-                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-                .objectType = VK_OBJECT_TYPE_SAMPLER,
-                .objectHandle = (u64)renderer->samplers.nearest,
-                .pObjectName = "default.samplers.nearest",
-            });
-
-        VD_VK_CHECK(vkCreateSampler(
-            renderer->device,
-            & (VkSamplerCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                .magFilter = VK_FILTER_LINEAR,
-                .minFilter = VK_FILTER_LINEAR,
-            },
-            0,
-            &renderer->samplers.linear));
-
-        name_object(
-            renderer,
-            & (VkDebugUtilsObjectNameInfoEXT)
-            {
-                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-                .objectType = VK_OBJECT_TYPE_SAMPLER,
-                .objectHandle = (u64)renderer->samplers.linear,
-                .pObjectName = "default.samplers.linear",
-            });
-    }
-// ----DESCRIPTOR LAYOUTS---------------------------------------------------------------------------
-
-    VD_VK_CHECK(vkCreateDescriptorSetLayout(
-            renderer->device,
-            & (VkDescriptorSetLayoutCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindings = (VkDescriptorSetLayoutBinding[])
-                {
-                    (VkDescriptorSetLayoutBinding) {
-                        .binding = 0,
-                        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                    }
-                },
-            },
-            0,
-            &renderer->descriptors.scene_data));
-
-    VD_VK_CHECK(vkCreateDescriptorSetLayout(
-            renderer->device,
-            & (VkDescriptorSetLayoutCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindings = (VkDescriptorSetLayoutBinding[])
-                {
-                    (VkDescriptorSetLayoutBinding) {
-                        .binding = 0,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .descriptorCount = 1,
-                    }
-                },
-            },
-            0,
-            &renderer->descriptors.single_image));
 
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
         TracyCZoneN(Create_Pipeline_Opaque, "Create Pipeline Opaque", 1);
 
-        VkShaderModule vertex, fragment;
+        HandleOf(GPUShader) vertex, fragment;
 
         TracyCZoneN(Compile_Shaders, "Compile Shaders", 1);
         {
-            void *code;
-            size_t code_size;
-            vd_shdc_compile(
-                renderer->shdc,
-                VD_PBROPAQUE_VERT,
-                VD_SHDC_SHADER_STAGE_VERTEX,
-                VD_MM_FRAME_ALLOCATOR(),
-                &code,
-                &code_size);
-
-            VD_VK_CHECK(vd_vk_create_shader_module(renderer->device, code, code_size, &vertex));
+            vertex = vd_renderer_create_shader(renderer, & (GPUShaderCreateInfo) {
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .sourcecode = VD_PBROPAQUE_VERT,
+                .sourcecode_len = strlen(VD_PBROPAQUE_VERT),
+            });
         }
 
         {
-            void *code;
-            size_t code_size;
-            vd_shdc_compile(
-                renderer->shdc,
-                VD_PBROPAQUE_FRAG,
-                VD_SHDC_SHADER_STAGE_FRAGMENT,
-                VD_MM_FRAME_ALLOCATOR(),
-                &code,
-                &code_size);
-
-            VD_VK_CHECK(vd_vk_create_shader_module(renderer->device, code, code_size, &fragment));
+            fragment = vd_renderer_create_shader(renderer, & (GPUShaderCreateInfo) {
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .sourcecode = VD_PBROPAQUE_FRAG,
+                .sourcecode_len = strlen(VD_PBROPAQUE_FRAG),
+            });
         }
         TracyCZoneEnd(Compile_Shaders);
 
-        VD_VK_CHECK(vkCreatePipelineLayout(
-            renderer->device,
-            & (VkPipelineLayoutCreateInfo)
-            {
-                .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount         = 1,
-                .pSetLayouts = (VkDescriptorSetLayout[])
-                {
-                    renderer->descriptors.single_image,
-                },
-                .pushConstantRangeCount = 1,
-                .pPushConstantRanges = & (VkPushConstantRange)
-                {
-                    .offset = 0,
-                    .size = sizeof(VD_R_GPUPushConstants),
-                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                },
+        renderer->materials.pbropaque = smat_new(&renderer->smat, & (MaterialBlueprint) {
+            .blend.on = 0,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .cull_face = VK_FRONT_FACE_CLOCKWISE,
+            .cull_mode = VK_CULL_MODE_FRONT_BIT,
+            .depth_test = {
+                .on = 1,
+                .write = 1,
+                .cmp_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
             },
-            0,
-            &renderer->pipelines.pbropaque.layout));
-
-        VD_VK_CHECK(vd_vk_build_pipeline(
-            renderer->device,
-            & (VD_VK_PipelineBuildInfo)
-            {
-                .num_stages = 2,
-                .stages = (VkPipelineShaderStageCreateInfo[])
-                {
-                    {
-                        .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                        .module = vertex,
-                        .pName = "main",
-                    },
-                    {
-                        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                        .module = fragment,
-                        .pName = "main",
-                    },
-                },
-                .layout = renderer->pipelines.pbropaque.layout,
-                .depth_test = {
-                    .on = 1,
-                    .write = 1,
-                    .cmp_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
-                },
-                .blend.on = 0,
-                .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-                .polygon_mode = VK_POLYGON_MODE_FILL,
-                .cull_mode = VK_CULL_MODE_FRONT_BIT,
-                .front_face = VK_FRONT_FACE_CLOCKWISE,
-                .multisample.on = 0,
-                .color_format = renderer->color_image_format,
-                .depth_format = renderer->depth_image_format,
+            .multisample.on = 0,
+            .polygon_mode = VK_POLYGON_MODE_FILL,
+            .num_shaders = 2,
+            .shaders = {
+                vertex,
+                fragment,
             },
-            &renderer->pipelines.pbropaque.pipeline));
+            .pass = VD_PASS_OPAQUE,
+            .num_bindings = 1,
+            .bindings = {
+                (BindingInfo) {.type = BINDING_TYPE_SAMPLER2D },
+            }
+        });
 
-        vkDestroyShaderModule(renderer->device, vertex, 0);
-        vkDestroyShaderModule(renderer->device, fragment, 0);
-
-        vd_deletion_queue_push_pipeline_and_layout(
-            &renderer->deletion_queue,
-            renderer->pipelines.pbropaque.pipeline,
-            renderer->pipelines.pbropaque.layout);
+        DROP_HANDLE(vertex);
+        DROP_HANDLE(fragment);
 
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
@@ -1647,13 +1527,13 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 int vd_renderer_deinit(VD_Renderer *renderer)
 {
     vd_texture_system_deinit(&renderer->textures);
+    vd_r_geo_system_deinit(&renderer->geos);
+    vd_r_sshader_deinit(&renderer->sshader);
     vkDestroyCommandPool(renderer->device, renderer->imm.command_pool, 0);
     vkDestroyFence(renderer->device, renderer->imm.fence, 0);
-    vkDestroyDescriptorSetLayout(renderer->device, renderer->descriptors.scene_data, 0);
 
     vd_deletion_queue_flush(&renderer->deletion_queue);
     vmaDestroyAllocator(renderer->allocator);
-    vd_shdc_deinit(renderer->shdc);
     vkDestroyDevice(renderer->device, 0);
 #if VD_VALIDATION_LAYERS
     renderer->vkDestroyDebugUtilsMessengerEXT(renderer->instance, renderer->debug_messenger, 0);
@@ -1682,8 +1562,7 @@ static void render_window_surface(
         1,
         &frame_data->fnc_render_complete));
 
-    vd_descriptor_allocator_clear(&frame_data->descriptor_allocator);
-
+    smat_begin_frame(&renderer->smat, &frame_data->descriptor_allocator);
     vd_deletion_queue_flush(&frame_data->deletion_queue);
 
     u32 swapchain_image_idx;
@@ -1735,7 +1614,9 @@ static void render_window_surface(
         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 
+    HandleOf(GPUMaterial) material = renderer->materials.pbropaque;
     {
+
         vkCmdBeginRendering(
             cmd,
             & (VkRenderingInfo)
@@ -1763,10 +1644,12 @@ static void render_window_surface(
                 },
             });
 
+        GPUMaterial *materialptr = USE_HANDLE(material, GPUMaterial);
+
         vkCmdBindPipeline(
             cmd,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
-            renderer->pipelines.pbropaque.pipeline);
+            materialptr->pipeline);
 
         vkCmdSetViewport(
             cmd,
@@ -1797,7 +1680,6 @@ static void render_window_surface(
         vd_r_perspective(projmatrix, glm_rad(60.0f), aspect_ratio, 0.1f, 100.0f);
 
         mat4 objmatrix = GLM_MAT4_IDENTITY_INIT;
-
         glm_translate_z(objmatrix, -4.0f);
 
         static float dt = 0.0f;
@@ -1811,71 +1693,76 @@ static void render_window_surface(
             objmatrix,
             worldmatrix);
 
-        VD_R_GPUPushConstants constants = {
-            .vertex_buffer = renderer->meshes.sphere.vertex_buffer_address,
-        };
+        VD_R_SceneData scene_data;
+        glm_mat4_copy(objmatrix, scene_data.obj);
+        glm_mat4_copy(projmatrix, scene_data.proj);
 
-        glm_mat4_copy(worldmatrix, constants.world_matrix);
+        GPUMaterialInstance instance = smat_write(
+            &renderer->smat,
+            & (MaterialWriteInfo)
+            {
+                .material = material,
+                .num_properties = 1,
+                .properties = (MaterialProperty[])
+                {
+                    (MaterialProperty)
+                    {
+                        .binding.type = BINDING_TYPE_STRUCT,
+                        .binding.struct_size = sizeof(scene_data),
+                        .pstruct = &scene_data,
+                    },
+                },
+            },
+            & (MaterialWriteInfo)
+            {
+                .material = material,
+                .num_properties = 1,
+                .properties = (MaterialProperty[])
+                {
+                    (MaterialProperty)
+                    {
+                        .binding.type = BINDING_TYPE_SAMPLER2D,
+                        .sampler2d = renderer->images.checker_magenta,
+                    },
+                }
+            });
+
+        VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(renderer->meshes.sphere, VD_R_GPUMesh);
+
+        VD_R_GPUPushConstants constants = {
+            .vertex_buffer = mesh_to_draw->vertex_buffer_address,
+        };
 
         vkCmdPushConstants(
             cmd,
-            renderer->pipelines.pbropaque.layout,
+            materialptr->layout,
             VK_SHADER_STAGE_VERTEX_BIT,
             0,
             sizeof(constants),
             &constants);
 
-        {
-            VD_R_AllocatedImage *checker_magenta = USE_HANDLE(
-                renderer->images.checker_magenta,
-                VD_R_AllocatedImage);
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            materialptr->layout,
+            0,
+            2,
+            (VkDescriptorSet[])
+            {
+                instance.default_set,
+                instance.property_set,
+            },
+            0,
+            0);
 
-            VkDescriptorSet image_set = vd_descriptor_allocator_allocate(
-                &frame_data->descriptor_allocator,
-                renderer->descriptors.single_image,
-                0);
-            vd_r_write_descriptor_sets(
-                image_set,
-                & (VD_R_WriteDescriptorSetsInfo)
-                {
-                    .device = renderer->device,
-                    .num_entries = 1,
-                    .entries = (VD_R_DescriptorSetEntry[])
-                    {
-                        (VD_R_DescriptorSetEntry) {
-                            .image = (VkDescriptorImageInfo) {
-                                .sampler = renderer->samplers.linear,
-                                .imageView = checker_magenta->view,
-                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            },
-                            .t = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                            .type = VD_R_DESCRIPTOR_SET_ENTRY_IMAGE,
-                        },
-                    },
-                },
-                VD_MM_FRAME_ALLOCATOR());
+        vkCmdBindIndexBuffer(cmd, mesh_to_draw->index.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            vkCmdBindDescriptorSets(
-                cmd,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                renderer->pipelines.pbropaque.layout,
-                0,
-                1,
-                (VkDescriptorSet[])
-                {
-                    image_set,
-                },
-                0,
-                0);
-        }
-
-        vkCmdBindIndexBuffer(cmd, renderer->meshes.sphere.index.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-        vkCmdDrawIndexed(cmd, renderer->meshes.sphere.index.info.size / sizeof(u32), 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd, mesh_to_draw->index.info.size / sizeof(u32), 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);
     }
 
+    smat_end_frame(&renderer->smat);
 
     vd_vk_image_transition(
         cmd,
@@ -2263,6 +2150,62 @@ void vd_renderer_imm_end(VD_Renderer *renderer)
         renderer->imm.fence));
 
     VD_VK_CHECK(vkWaitForFences(renderer->device, 1, &renderer->imm.fence, 1, 99999999));
+}
+
+HandleOf(VD_R_GPUMesh) vd_renderer_create_mesh(
+    VD_Renderer *renderer,
+    VD_R_MeshCreateInfo *info)
+{
+    return vd_r_geo_system_new(&renderer->geos, info);
+}
+
+void vd_renderer_write_mesh(
+    VD_Renderer *renderer,
+    VD_R_MeshWriteInfo *info)
+{
+    size_t bytes_indices = sizeof(*info->indices) * info->num_indices;
+    size_t bytes_vertices = sizeof(*info->vertices) * info->num_vertices;
+
+    VD_R_GPUMesh *mesh = USE_HANDLE(info->mesh, VD_R_GPUMesh);
+
+    VD_R_AllocatedBuffer staging_buffer = vd_renderer_create_buffer(
+        renderer,
+        bytes_indices + bytes_vertices,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void *data;
+    vmaMapMemory(renderer->allocator, staging_buffer.allocation, &data);
+    memcpy(data, info->vertices, bytes_vertices);
+    memcpy((char*)data + bytes_vertices, info->indices, bytes_indices);
+    vmaUnmapMemory(renderer->allocator, staging_buffer.allocation);
+
+    VkCommandBuffer cmd = vd_renderer_imm_begin(renderer);
+
+    vkCmdCopyBuffer(
+        cmd,
+        staging_buffer.buffer,
+        mesh->vertex.buffer,
+        1,
+        & (VkBufferCopy) { .srcOffset = 0, .dstOffset = 0, .size = bytes_vertices });
+
+    vkCmdCopyBuffer(
+        cmd,
+        staging_buffer.buffer,
+        mesh->index.buffer,
+        1,
+        &(VkBufferCopy) {.srcOffset = bytes_vertices, .dstOffset = 0, .size = bytes_indices });
+
+    vd_renderer_imm_end(renderer);
+
+    vd_renderer_destroy_buffer(renderer, &staging_buffer);
+}
+
+HandleOf(GPUShader) vd_renderer_create_shader(
+    VD_Renderer *renderer,
+    GPUShaderCreateInfo *info)
+{
+    return vd_r_sshader_new(&renderer->sshader, info);
 }
 
 static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)

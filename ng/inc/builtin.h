@@ -81,26 +81,32 @@ extern ECS_SYSTEM_DECLARE(GarbageCollectSystem);
 typedef struct {
     vec3 location;
 } LocationComponent;
+extern ECS_COMPONENT_DECLARE(LocationComponent);
 
 typedef struct {
     versor rotation;
 } RotationComponent;
+extern ECS_COMPONENT_DECLARE(RotationComponent);
 
 typedef struct {
     vec3 scale;
 } ScaleComponent;
+extern ECS_COMPONENT_DECLARE(ScaleComponent);
 
 typedef struct {
     mat4 world;
 } WorldTransformComponent;
+extern ECS_COMPONENT_DECLARE(WorldTransformComponent);
 
 typedef struct {
-    int a;
-
+    HandleOf(GPUMesh)       mesh;
+    HandleOf(GPUMaterial)   material;
 } StaticMeshComponent;
+extern ECS_COMPONENT_DECLARE(StaticMeshComponent);
 
 extern ECS_SYSTEM_DECLARE(RendererRenderToWindowSurfaceComponents); // EcsOnStore
 extern ECS_SYSTEM_DECLARE(RendererCheckWindowComponentSizeChange);  // EcsOnPostLoad
+extern ECS_SYSTEM_DECLARE(RendererGatherStaticMeshComponentSystem); // EcsPreStore
 extern ECS_OBSERVER_DECLARE(RendererOnWindowComponentSet);
 
 

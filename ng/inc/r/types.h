@@ -50,14 +50,8 @@ typedef struct {
 
 typedef struct {
     VkDeviceAddress vertex_buffer;
+    mat4            obj;
 } VD_R_GPUPushConstants;
-
-typedef struct {
-    mat4    view;
-    mat4    proj;
-    mat4    viewproj;
-} VD_R_GPuSceneData;
-
 
 typedef struct {
     VkExtent3D          extent;
@@ -84,7 +78,6 @@ typedef struct {
 typedef struct {
     mat4 view;
     mat4 proj;
-    mat4 obj;
     vec3 sun_direction;
     vec3 sun_color;
 } VD_R_SceneData;
@@ -173,9 +166,9 @@ typedef struct {
 
 typedef struct {
     HandleOf(VD_R_GPUMesh)  mesh;
-    u32                     first_index;
+    HandleOf(GPUMaterial)   material;
     mat4                    transform;
-} VD_R_Object;
+} RenderObject;
 
 void vd_r_generate_sphere_data(
     VD_R_Vertex **vertices,

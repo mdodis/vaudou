@@ -86,6 +86,14 @@ HandleOf(GPUShader) vd_renderer_create_shader(
     VD_Renderer *renderer,
     GPUShaderCreateInfo *info);
 
+HandleOf(GPUMaterial) vd_renderer_create_material(
+    VD_Renderer *renderer,
+    MaterialBlueprint *blueprint);
+
+HandleOf(GPUMaterial) vd_renderer_get_default_material(VD_Renderer *renderer);
+
+void vd_renderer_push_render_object(VD_Renderer *renderer, RenderObject *render_object);
+
 void vd_renderer_upload_texture_data(
     VD_Renderer *renderer,
     VD_R_AllocatedImage *image,
@@ -102,5 +110,5 @@ extern void RendererOnWindowComponentSet(ecs_iter_t *it);
 // ----SYSTEMS--------------------------------------------------------------------------------------
 extern void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it);
 extern void RendererCheckWindowComponentSizeChange(ecs_iter_t *it);
-
+extern void RendererGatherStaticMeshComponentSystem(ecs_iter_t *it);
 #endif // !VD_RENDERER_H

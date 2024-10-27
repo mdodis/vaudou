@@ -1,3 +1,4 @@
+#include "cglm/clipspace/persp_rh_zo.h"
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "r/types.h"
 
@@ -191,11 +192,22 @@ void *vd_r_generate_checkerboard(
 
 void vd_r_perspective(mat4 proj, float fov, float aspect, float znear, float zfar)
 {
-    glm_perspective(fov, aspect, znear, zfar, proj);
+    mat4 reverse_z = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f,-1.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 1.0f,
+    };
 
-    mat4 correction = GLM_MAT4_IDENTITY_INIT;
+    mat4 p;
+    glm_perspective_rh_zo(fov, aspect, znear, zfar, p);
 
-    correction[1][1] = -1.0f;
+    glm_mat4_mul(reverse_z, p, proj);
 
-    glm_mat4_mul(correction, proj, proj);
+
+    /*glm_perspective(fov, aspect, znear, zfar, proj);*/
+    /*mat4 correction = GLM_MAT4_IDENTITY_INIT;*/
+    /**/
+    /*glm_mat4_mul(correction, proj, proj);*/
+    /*correction[1][1] = -1.0f;*/
 }

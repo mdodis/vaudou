@@ -53,6 +53,7 @@ struct VD_Renderer {
     SShader                             sshader;
     SMat                                smat;
 
+// ----RENDERING DEVICES----------------------------------------------------------------------------
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;
 
@@ -79,6 +80,9 @@ struct VD_Renderer {
         VkCommandPool           command_pool;
     } imm;
 
+    dynarray RenderObject *render_object_list;
+
+// ----PRIMITIVES-----------------------------------------------------------------------------------
     struct {
         HandleOf(VD_R_GPUMesh)  quad;
         HandleOf(VD_R_GPUMesh)  sphere;
@@ -940,7 +944,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             .blend.on = 0,
             .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
             .cull_face = VK_FRONT_FACE_CLOCKWISE,
-            .cull_mode = VK_CULL_MODE_FRONT_BIT,
+            .cull_mode = VK_CULL_MODE_BACK_BIT,
             .depth_test = {
                 .on = 1,
                 .write = 1,
@@ -965,8 +969,52 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
+
+    array_init(renderer->render_object_list, vd_memory_get_system_allocator());
+
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
+
+    {
+        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "sphere" });
+        ecs_set(renderer->world, ent, StaticMeshComponent, {
+            .mesh = renderer->meshes.sphere,
+            .material = renderer->materials.pbropaque,
+        });
+
+        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
+        glm_translate_x(matrix, -1.0f);
+
+        ecs_add(renderer->world, ent, WorldTransformComponent);
+        WorldTransformComponent *c = ecs_get_mut(
+            renderer->world,
+            ent,
+            WorldTransformComponent);
+        glm_mat4_copy(matrix, c->world);
+
+    }
+
+    {
+        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "cube" });
+        ecs_set(renderer->world, ent, StaticMeshComponent, {
+            .mesh = renderer->meshes.cube,
+            .material = renderer->materials.pbropaque,
+        });
+
+        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
+        vec3 rotation_vector = { 1, 1, 0 };
+        glm_normalize(rotation_vector);
+        glm_translate_y(matrix, 1.0f);
+        glm_rotate(matrix, glm_rad(30.0f), rotation_vector);
+
+        ecs_add(renderer->world, ent, WorldTransformComponent);
+        WorldTransformComponent *c = ecs_get_mut(
+            renderer->world,
+            ent,
+            WorldTransformComponent);
+        glm_mat4_copy(matrix, c->world);
+
+    }
 
     return 0;
 }
@@ -1613,89 +1661,86 @@ static void render_window_surface(
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-
-    HandleOf(GPUMaterial) material = renderer->materials.pbropaque;
-    {
-
-        vkCmdBeginRendering(
-            cmd,
-            & (VkRenderingInfo)
+    vkCmdBeginRendering(
+        cmd,
+        & (VkRenderingInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = { .offset = { 0, 0 }, .extent = ws->extent },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = (VkRenderingAttachmentInfo[])
             {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = { .offset = { 0, 0 }, .extent = ws->extent },
-                .layerCount = 1,
-                .colorAttachmentCount = 1,
-                .pColorAttachments = (VkRenderingAttachmentInfo[])
-                {
-                    {
-                        .sType          = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                        .imageView      = ws->color_image.view,
-                        .imageLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    },
-                },
-                .pDepthAttachment = & (VkRenderingAttachmentInfo)
                 {
                     .sType          = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView      = ws->depth_image.view,
-                    .imageLayout    = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clearValue.depthStencil.depth = 0.0f,
+                    .imageView      = ws->color_image.view,
+                    .imageLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 },
-            });
+            },
+            .pDepthAttachment = & (VkRenderingAttachmentInfo)
+            {
+                .sType          = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView      = ws->depth_image.view,
+                .imageLayout    = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue.depthStencil.depth = 0.0f,
+            },
+        });
 
+    vkCmdSetViewport(
+        cmd,
+        0,
+        1,
+        & (VkViewport)
+        {
+            .x = 0,
+            .y = 0,
+            .width = ws->extent.width,
+            .height = ws->extent.height,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f
+        });
+
+    vkCmdSetScissor(
+        cmd,
+        0,
+        1,
+        & (VkRect2D)
+        {
+            .offset = { 0, 0 },
+            .extent = ws->extent,
+        });
+
+    float aspect_ratio = (float)ws->extent.width / (float)ws->extent.height;
+    mat4 projmatrix;
+    vd_r_perspective(projmatrix, glm_rad(40.0f), aspect_ratio, 0.01f, 100.0f);
+
+    static float dt = 0.0f;
+    dt += 0.01f;
+    vec3 up = {0, 1, 0};
+
+
+    mat4 viewmatrix = GLM_MAT4_IDENTITY_INIT;
+    float radius = 5.0f;
+    vec3 eye = {sinf(glm_rad(dt) * 2) * radius, sinf(glm_rad(dt) * 1.5) * radius, cosf(glm_rad(dt) * 2) * radius};
+    glm_lookat(eye, GLM_VEC3_ZERO, up, viewmatrix);
+
+    VD_R_SceneData scene_data;
+    glm_mat4_copy(projmatrix, scene_data.proj);
+    glm_mat4_copy(viewmatrix, scene_data.view);
+
+    vec3 sun_direction = {0.0f, 0.0f, -1.0f};
+    glm_vec3_copy(sun_direction, scene_data.sun_direction);
+    glm_normalize(scene_data.sun_direction);
+
+    for (int i = 0; i < array_len(renderer->render_object_list); ++i) {
+        HandleOf(GPUMaterial) material = renderer->render_object_list[i].material;
         GPUMaterial *materialptr = USE_HANDLE(material, GPUMaterial);
-
         vkCmdBindPipeline(
             cmd,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             materialptr->pipeline);
-
-        vkCmdSetViewport(
-            cmd,
-            0,
-            1,
-            & (VkViewport)
-            {
-                .x = 0,
-                .y = 0,
-                .width = ws->extent.width,
-                .height = ws->extent.height,
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f
-            });
-
-        vkCmdSetScissor(
-            cmd,
-            0,
-            1,
-            & (VkRect2D)
-            {
-                .offset = { 0, 0 },
-                .extent = ws->extent,
-            });
-
-        float aspect_ratio = (float)ws->extent.width / (float)ws->extent.height;
-        mat4 projmatrix;
-        vd_r_perspective(projmatrix, glm_rad(60.0f), aspect_ratio, 0.1f, 100.0f);
-
-        mat4 objmatrix = GLM_MAT4_IDENTITY_INIT;
-        glm_translate_z(objmatrix, -4.0f);
-
-        static float dt = 0.0f;
-        dt += 0.001f;
-        vec3 up = {0.0f, 1.0f, 0.0f };
-        glm_rotate(objmatrix, 1.0f * dt, up);
-
-        mat4 worldmatrix;
-        glm_mat4_mul(
-            projmatrix,
-            objmatrix,
-            worldmatrix);
-
-        VD_R_SceneData scene_data;
-        glm_mat4_copy(objmatrix, scene_data.obj);
-        glm_mat4_copy(projmatrix, scene_data.proj);
 
         GPUMaterialInstance instance = smat_write(
             &renderer->smat,
@@ -1727,11 +1772,13 @@ static void render_window_surface(
                 }
             });
 
-        VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(renderer->meshes.sphere, VD_R_GPUMesh);
-
+        VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(renderer->render_object_list[i].mesh, VD_R_GPUMesh);
         VD_R_GPUPushConstants constants = {
             .vertex_buffer = mesh_to_draw->vertex_buffer_address,
+            .obj = GLM_MAT4_IDENTITY_INIT,
         };
+
+        glm_mat4_copy(renderer->render_object_list[i].transform, constants.obj);
 
         vkCmdPushConstants(
             cmd,
@@ -1758,9 +1805,8 @@ static void render_window_surface(
         vkCmdBindIndexBuffer(cmd, mesh_to_draw->index.buffer, 0, VK_INDEX_TYPE_UINT32);
 
         vkCmdDrawIndexed(cmd, mesh_to_draw->index.info.size / sizeof(u32), 1, 0, 0, 0);
-
-        vkCmdEndRendering(cmd);
     }
+    vkCmdEndRendering(cmd);
 
     smat_end_frame(&renderer->smat);
 
@@ -2035,85 +2081,6 @@ VD_R_GPUMesh vd_renderer_upload_mesh(
     return result;
 }
 
-void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
-{
-    const Application *app = ecs_singleton_get(it->world, Application);
-    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
-    WindowSurfaceComponent *ws = ecs_field(it, WindowSurfaceComponent, 0);
-
-    for (int i = 0; i < it->count; ++i) {
-        render_window_surface(renderer, &ws[i]);
-    }
-}
-
-void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
-{
-    const Application *app = ecs_singleton_get(it->world, Application);
-    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
-    WindowComponent *w  = ecs_field(it, WindowComponent, 0);
-    Size2D *sizes       = ecs_field(it, Size2D,          1);
-
-    for (int i = 0; i < it->count; ++i) {
-        if (!w[i].just_resized) {
-            continue;
-        }
-
-        WindowSurfaceComponent *ws =
-            (WindowSurfaceComponent*)ecs_get(it->world, it->entities[i], WindowSurfaceComponent);
-
-        VD_LOG_FMT(
-            "Renderer",
-            "Window %{cstr} just resized!",
-            ecs_get_name(it->world, it->entities[i]));
-        vkDeviceWaitIdle(renderer->device);
-
-        vkDestroyImageView(renderer->device, ws->color_image.view, 0);
-        vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
-
-        for (int j = 0; j < array_len(ws->image_views); ++j) {
-            vkDestroyImageView(renderer->device, ws->image_views[j], 0);
-        }
-
-        vkDestroySwapchainKHR(renderer->device, ws->swapchain, 0);
-        vkDestroySurfaceKHR(renderer->instance, ws->surface, 0);
-        
-        VkSurfaceKHR surface = w[i].create_surface(&w[i], renderer->instance);
-        VkSwapchainKHR                  swapchain;
-        VkFormat                        surface_format;
-        dynarray VkImage                *images;
-        dynarray VkImageView            *image_views;
-        dynarray VD_RendererFrameData   *frame_data = ws->frame_data;
-        VD_R_AllocatedImage             color_image;
-        VD_R_AllocatedImage             depth_image;
-        create_swapchain_image_views_and_framebuffers(
-            ecs_get_name(it->world, it->entities[i]),
-            it->entities[i],
-            renderer,
-            surface,
-            (VkExtent2D) { sizes[i].x, sizes[i].y },
-            &swapchain,
-            &surface_format,
-            &images,
-            &image_views,
-            &frame_data,
-            &color_image,
-            &depth_image);
-
-        ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
-            .swapchain = swapchain,
-            .surface = surface,
-            .surface_format = surface_format,
-            .images = images,
-            .image_views = image_views,
-            .extent = { sizes[i].x, sizes[i].y },
-            .frame_data = frame_data,
-            .current_frame = 0,
-            .color_image = color_image,
-            .depth_image = depth_image,
-        });
-    }
-}
-
 VkCommandBuffer vd_renderer_imm_begin(VD_Renderer *renderer)
 {
     VD_VK_CHECK(vkResetFences(renderer->device, 1, &renderer->imm.fence));
@@ -2208,7 +2175,124 @@ HandleOf(GPUShader) vd_renderer_create_shader(
     return vd_r_sshader_new(&renderer->sshader, info);
 }
 
+HandleOf(GPUMaterial) vd_renderer_create_material(
+    VD_Renderer *renderer,
+    MaterialBlueprint *blueprint)
+{
+    return smat_new(&renderer->smat, blueprint);
+}
+
+HandleOf(GPUMaterial) vd_renderer_get_default_material(VD_Renderer *renderer)
+{
+    return renderer->materials.pbropaque;
+}
+
+void vd_renderer_push_render_object(VD_Renderer *renderer, RenderObject *render_object)
+{
+    array_add(renderer->render_object_list, *render_object);
+}
+
 static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)
 {
     VD_LOG_FMT("SHDC", "%{cstr}: %{cstr} %{cstr}", what, msg, extmsg);
+}
+
+
+void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
+{
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+    WindowSurfaceComponent *ws = ecs_field(it, WindowSurfaceComponent, 0);
+
+    for (int i = 0; i < it->count; ++i) {
+        render_window_surface(renderer, &ws[i]);
+    }
+
+    array_clear(renderer->render_object_list);
+}
+
+void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
+{
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+    WindowComponent *w  = ecs_field(it, WindowComponent, 0);
+    Size2D *sizes       = ecs_field(it, Size2D,          1);
+
+    for (int i = 0; i < it->count; ++i) {
+        if (!w[i].just_resized) {
+            continue;
+        }
+
+        WindowSurfaceComponent *ws =
+            (WindowSurfaceComponent*)ecs_get(it->world, it->entities[i], WindowSurfaceComponent);
+
+        VD_LOG_FMT(
+            "Renderer",
+            "Window %{cstr} just resized!",
+            ecs_get_name(it->world, it->entities[i]));
+        vkDeviceWaitIdle(renderer->device);
+
+        vkDestroyImageView(renderer->device, ws->color_image.view, 0);
+        vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
+
+        for (int j = 0; j < array_len(ws->image_views); ++j) {
+            vkDestroyImageView(renderer->device, ws->image_views[j], 0);
+        }
+
+        vkDestroySwapchainKHR(renderer->device, ws->swapchain, 0);
+        vkDestroySurfaceKHR(renderer->instance, ws->surface, 0);
+        
+        VkSurfaceKHR surface = w[i].create_surface(&w[i], renderer->instance);
+        VkSwapchainKHR                  swapchain;
+        VkFormat                        surface_format;
+        dynarray VkImage                *images;
+        dynarray VkImageView            *image_views;
+        dynarray VD_RendererFrameData   *frame_data = ws->frame_data;
+        VD_R_AllocatedImage             color_image;
+        VD_R_AllocatedImage             depth_image;
+        create_swapchain_image_views_and_framebuffers(
+            ecs_get_name(it->world, it->entities[i]),
+            it->entities[i],
+            renderer,
+            surface,
+            (VkExtent2D) { sizes[i].x, sizes[i].y },
+            &swapchain,
+            &surface_format,
+            &images,
+            &image_views,
+            &frame_data,
+            &color_image,
+            &depth_image);
+
+        ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
+            .swapchain = swapchain,
+            .surface = surface,
+            .surface_format = surface_format,
+            .images = images,
+            .image_views = image_views,
+            .extent = { sizes[i].x, sizes[i].y },
+            .frame_data = frame_data,
+            .current_frame = 0,
+            .color_image = color_image,
+            .depth_image = depth_image,
+        });
+    }
+}
+
+void RendererGatherStaticMeshComponentSystem(ecs_iter_t *it)
+{
+    const Application *app = ecs_singleton_get(it->world, Application);
+    VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
+    StaticMeshComponent *static_mesh_components = ecs_field(it, StaticMeshComponent, 0);
+    WorldTransformComponent *world_transforms = ecs_field(it, WorldTransformComponent, 1);
+
+    for (int i = 0; i < it->count; ++i) {
+        RenderObject ro = {
+            .mesh = static_mesh_components[i].mesh,
+            .material = static_mesh_components[i].material,
+        };
+
+        glm_mat4_copy(world_transforms[i].world, ro.transform);
+        vd_renderer_push_render_object(renderer, &ro);
+    }
 }

@@ -25,5 +25,10 @@ elseif (UNIX)
         IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/osx-arm64/libluajit.a"
     )
 
+    add_executable(luajit::cli IMPORTED GLOBAL)
+    set_target_properties(luajit::cli PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/osx-arm64/luajit"
+    )
+
     target_include_directories(luajit INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/osx-arm64/)
 endif()

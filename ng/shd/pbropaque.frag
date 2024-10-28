@@ -18,13 +18,13 @@ void main()
 {
     vec3 diffuseColor = texture(dsTexture, inUV).xyz;
     float roughness = 0.4 * 0.4;
-    float metallic = 0.5;
+    float metallic = 0.8;
     vec3 Lo = vec3(0.0);
 
     {
         vec3 v = normalize(eye_position() - inWorldPos);
         vec3 n = inNormal;
-        vec3 l = vd_scene_data.sun_direction;
+        vec3 l = normalize(-vd_scene_data.sun_direction);
         vec3 h = normalize(l + v);
 
         float NoV = abs(dot(n, v)) + 1e-5;

@@ -5,7 +5,26 @@
 extern "C" {
 #endif
 
-void init_imgui();
+typedef struct {
+    void *backend_ptr;
+    size_t backend_size;
+} InitInfo;
+
+void init_imgui(InitInfo *info);
+
+void *get_backend_data();
+void *get_fonts_texture_data(int *width, int *height);
+
+typedef struct {
+    float delta_time;
+    int w, h;
+    int rw, rh;
+} BeginFrameInfo;
+
+void begin_frame(BeginFrameInfo *info);
+void end_frame();
+
+void render();
 
 #ifdef __cplusplus
 }

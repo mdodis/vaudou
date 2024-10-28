@@ -4,6 +4,7 @@
 #define VD_LOG_IMPLEMENTATION
 #include "vd_log.h"
 #include "w_sdl.h"
+#include "vd-imgui/module.h"
 
 static struct {
     VD_Instance *instance;
@@ -29,6 +30,7 @@ int main(int argc, char const *argv[]) {
     ecs_world_t *world = vd_instance_get_world(G.instance);
     ecs_singleton_set(world, EcsRest, { 0 });
     ECS_IMPORT(world, Sdl);
+    ECS_IMPORT(world, VdImGui);
 
 
     vd_instance_main(G.instance);

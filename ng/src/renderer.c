@@ -1002,10 +1002,10 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         });
 
         mat4 matrix = GLM_MAT4_IDENTITY_INIT;
-        vec3 rotation_vector = { 1, 1, 0 };
+        vec3 rotation_vector = { 0.7, 1, 0.1 };
         glm_normalize(rotation_vector);
         glm_translate_y(matrix, 1.0f);
-        glm_rotate(matrix, glm_rad(30.0f), rotation_vector);
+        glm_rotate(matrix, glm_rad(45.0f), rotation_vector);
 
         ecs_add(renderer->world, ent, WorldTransformComponent);
         WorldTransformComponent *c = ecs_get_mut(
@@ -1016,6 +1016,27 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     }
 
+    {
+        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "cube 1" });
+        ecs_set(renderer->world, ent, StaticMeshComponent, {
+            .mesh = renderer->meshes.cube,
+            .material = renderer->materials.pbropaque,
+        });
+
+        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
+        vec3 rotation_vector = { 0.7, 1, 0.1 };
+        glm_normalize(rotation_vector);
+        glm_translate_y(matrix, -1.1f);
+        glm_rotate(matrix, glm_rad(-45.0f), rotation_vector);
+
+        ecs_add(renderer->world, ent, WorldTransformComponent);
+        WorldTransformComponent *c = ecs_get_mut(
+            renderer->world,
+            ent,
+            WorldTransformComponent);
+        glm_mat4_copy(matrix, c->world);
+
+    }
     return 0;
 }
 

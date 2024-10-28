@@ -1,6 +1,7 @@
-#include "cglm/clipspace/persp_rh_zo.h"
 #define VD_INTERNAL_SOURCE_FILE 1
 #include "r/types.h"
+#include "array.h"
+#include "cglm/clipspace/persp_rh_zo.h"
 
 #include "cglm/affine.h"
 
@@ -62,8 +63,8 @@ void vd_r_generate_sphere_data(
         }
     }
 
-    for (int lat = 0; lat <= segments; ++lat) {
-        for (int lon = 0; lon <= rings; ++lon) {
+    for (int lat = 0; lat < segments; ++lat) {
+        for (int lon = 0; lon < rings; ++lon) {
             int first = (lat * (rings + 1)) + lon;
             int second = first + rings + 1;
 

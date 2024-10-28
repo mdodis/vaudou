@@ -3,6 +3,7 @@
 #include "strmap.h"
 #include "intmap.h"
 #include "handlemap.h"
+#include "string.h"
 
 UTEST(strmap, basic)
 {
@@ -108,7 +109,7 @@ UTEST(handlemap, basic)
         .initial_capacity = 10,
     });
 
-    const char *new_value = _strdup("value");
+    const char *new_value = strdup("value");
     VD_Handle handle = VD_HANDLEMAP_REGISTER(map, &new_value, {
         .ref_mode = VD_HANDLEMAP_REF_MODE_COUNT
     });

@@ -68,7 +68,7 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
                 "%{stru32}/engine.vdlog%{null}",
                 vd_str_chop_right_last_of(exec_path, '/'));
 
-    instance->log.filepath = _strdup(log_path.data);
+    instance->log.filepath = strdup(log_path.data);
     instance->log.flags = VD_LOG_WRITE_STDOUT;
     vd_fmt_printf("%{stru32}\n", log_path);
 

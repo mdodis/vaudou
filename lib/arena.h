@@ -47,7 +47,7 @@ VD_INLINE void *vd_arena_alloc_t(VD_Arena *arena, ptrdiff_t size, ptrdiff_t alig
         return 0;
     }
 
-    umm p = (umm)vd_atomic_fetch_and_add64(&arena->begin, padding + size);
+    umm p = (umm)vd_atomic_fetch_and_adduptr(&arena->begin, padding + size);
 
 
     p += padding;

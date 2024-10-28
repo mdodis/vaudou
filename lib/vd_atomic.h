@@ -111,6 +111,7 @@ static inline void *vd_atomic_load_ptr(void *volatile ptr)
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedCompareExchangePointer(ptr, 0, 0);
 #else
+    return (void*)__sync_val_compare_and_swap((uintptr_t*)ptr, 0, 0);
 #endif
 }
 
@@ -147,6 +148,22 @@ static inline int32_t vd_atomic_add_and_fetch64(volatile int64_t *addend, int64_
 }
 
 static inline int64_t vd_atomic_fetch_and_add64(volatile int64_t *addend, int64_t value) {
+#if VD_ATOMIC_PLATFORM_WINDOWS
+    return _InterlockedExchangeAdd64(addend, value);
+#else
+    return __sync_fetch_and_add(addend, value);
+#endif
+}
+
+static inline int64_t vd_atomic_fetch_and_addu64(volatile uint64_t *addend, int64_t value) {
+#if VD_ATOMIC_PLATFORM_WINDOWS
+    return _InterlockedExchangeAdd64(addend, value);
+#else
+    return __sync_fetch_and_add(addend, value);
+#endif
+}
+
+static inline int64_t vd_atomic_fetch_and_adduptr(volatile uintptr_t *addend, int64_t value) {
 #if VD_ATOMIC_PLATFORM_WINDOWS
     return _InterlockedExchangeAdd64(addend, value);
 #else

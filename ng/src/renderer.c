@@ -243,7 +243,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     
     VkInstanceCreateFlags instance_create_flags = 0;
 #if VD_PLATFORM_MACOS
-    instance_create_flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+    instance_create_flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
 
     VD_VK_CHECK(vkCreateInstance(

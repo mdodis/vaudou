@@ -1,9 +1,10 @@
 #ifndef VD_IMGUI_MODULE_INTERNAL_H
 #define VD_IMGUI_MODULE_INTERNAL_H
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "vd_common.h"
 
 typedef struct {
     void *backend_ptr;

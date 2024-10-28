@@ -4,7 +4,8 @@
 extern "C" {
 #endif
 
-#include "vd_common.h"
+#include <stdint.h>
+#include <stddef.h>
 
 typedef struct {
     void *backend_ptr;

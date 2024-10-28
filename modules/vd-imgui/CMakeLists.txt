@@ -1,9 +1,17 @@
-file(GLOB SOURCES "vd-imgui/*.cpp" "vd-imgui/*.c")
+file(GLOB CPP_SOURCES "imguic/*.cpp")
+file(GLOB CPP_HEADERS "imguic/*.h")
+
+add_library(vd-imgui-cadapter STATIC ${CPP_SOURCES} ${CPP_HEADERS})
+target_link_libraries(vd-imgui-cadapter PUBLIC imgui)
+target_include_directories(vd-imgui-cadapter PUBLIC "imguic/")
+set_target_properties(vd-imgui-cadapter PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
+file(GLOB SOURCES "vd-imgui/*.c")
 file(GLOB HEADERS "vd-imgui/*.h")
 
 add_library(vd-imgui STATIC ${SOURCES} ${HEADERS})
 target_include_directories(vd-imgui PUBLIC .)
-target_link_libraries(vd-imgui PUBLIC vdng vdlib flecs imgui)
+target_link_libraries(vd-imgui PUBLIC vdng vdlib flecs PRIVATE vd-imgui-cadapter)
 
 file(GLOB PRECOMP_SHADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/vd-imgui/shd/*.vert

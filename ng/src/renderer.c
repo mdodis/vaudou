@@ -204,6 +204,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     VkLayerProperties *avail_layers = VD_MM_FRAME_ALLOC_ARRAY(VkLayerProperties, num_avail_layers);
     vkEnumerateInstanceLayerProperties(&num_avail_layers, avail_layers);
 
+    int can_enable_validation_layers = 1;
     for (int i = 0; i < ARRAY_COUNT(Validation_Layers); ++i) {
         int found = 0;
 
@@ -214,11 +215,17 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             }
         }
 
-        assert(found);
+        if (!found) {
+            VD_LOG("Renderer", "Could not find validation layers");
+            can_enable_validation_layers = 0;
+            break;
+        }
     }
 
-    num_enabled_layers = ARRAY_COUNT(Validation_Layers);
-    enabled_layers = Validation_Layers;
+    if (can_enable_validation_layers) {
+        num_enabled_layers = ARRAY_COUNT(Validation_Layers);
+        enabled_layers = Validation_Layers;
+    }
 #endif
 
 

@@ -4,12 +4,51 @@
 #include "fmt.h"
 #include "mm.h"
 
+#if VD_PLATFORM_MACOS
+#include <dlfcn.h>
+static const char *find_vulkan_library()
+{
+#define CHECK_OPEN(x) \
+    do { \
+        void *m = dlopen(x, RTLD_NOW | RTLD_LOCAL); \
+        if (m != 0) { \
+            dlclose(m); \
+            return x; \
+        } \
+    } while (0)
+
+    CHECK_OPEN("libMoltenVK.dylib");
+    CHECK_OPEN("MoltenVK.framework/MoltenVK");
+    CHECK_OPEN("libvulkan.dylib");
+    CHECK_OPEN("libvulkan.1.dylib");
+    CHECK_OPEN("vulkan.framework/vulkan");
+
+    if (getenv("DYLD_FALLBACK_LIBRARY_PATH") == NULL) {
+        CHECK_OPEN("/usr/local/lib/libvulkan.dylib");
+    }
+
+    return 0;
+#undef CHECK_OPEN
+}
+#endif
+
+void sdl_log(void *userdata, int category, SDL_LogPriority priority, const char *message)
+{
+    VD_LOG_FMT("SDL", "%{cstr}", message);
+}
+
 static int Sdl_Initialized = 0;
 static void ensure_sdl_initialized()
 {
     if (!Sdl_Initialized) {
         assert(SDL_Init(SDL_INIT_VIDEO) == SDL_TRUE);
+        SDL_SetLogOutputFunction(sdl_log, 0);
+#if VD_PLATFORM_MACOS
+        const char *vulkan_library = find_vulkan_library();
+        assert(SDL_Vulkan_LoadLibrary(vulkan_library) == SDL_TRUE);
+#else
         assert(SDL_Vulkan_LoadLibrary(0) == SDL_TRUE);
+#endif
         Sdl_Initialized = 1;
     }
 }

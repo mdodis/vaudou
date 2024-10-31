@@ -46,6 +46,8 @@ typedef struct {
     VD_R_AllocatedBuffer    vertex;
     VD_R_AllocatedBuffer    index;
     VkDeviceAddress         vertex_buffer_address;
+    size_t num_vertices;
+    size_t num_indices;
 } VD_R_GPUMesh;
 
 typedef struct {
@@ -116,6 +118,7 @@ typedef struct {
     VkCullModeFlags          cull_mode;
     VkFrontFace              cull_face;
     int                      pass;
+    int                      num_vertex_attributes;
     struct {
         int                  on;
     } multisample;

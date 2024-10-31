@@ -234,4 +234,9 @@ VD_INLINE u32 vd_pack_unorm_r8g8b8a8(float v[4])
 #define ARRAY_COUNT VD_ARRAY_COUNT
 #endif
 
+#ifndef VD_CUSTOM_PREFIXES
+#define VD(x) x
+#define vd(x) x
+#endif
+
 #endif // VD_COMMON_H

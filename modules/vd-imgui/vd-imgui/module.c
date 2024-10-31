@@ -8,7 +8,8 @@
 typedef struct {
     VD_Renderer *renderer;
     HandleOf(VD_R_AllocatedImage) font_image;
-    int a;
+    HandleOf(VD_R_GPUMesh) mesh_data;
+    HandleOf(GPUMaterial) material;
 } BackendData;
 
 static void ImGuiUpdatePanelsSystem(ecs_iter_t *it);
@@ -17,7 +18,7 @@ ECS_COMPONENT_DECLARE(ImGuiPanel);
 
 void VdImGuiImport(ecs_world_t *world)
 {
-    ECS_MODULE(world, ImGui);
+    ECS_MODULE(world, VdImGui);
 
     init_imgui(& (InitInfo) {
         .backend_size = sizeof(BackendData),
@@ -58,6 +59,11 @@ void VdImGuiImport(ecs_world_t *world)
         USE_HANDLE(backend->font_image, VD_R_AllocatedImage),
         font_data,
         width * height * sizeof(u32));
+
+    backend->mesh_data = vd_renderer_create_mesh(renderer, & (VD_R_MeshCreateInfo) {
+        .num_indices = 8,
+        .num_vertices = 8,
+    });
 }
 
 static void ImGuiUpdatePanelsSystem(ecs_iter_t *it)
@@ -72,6 +78,8 @@ static void ImGuiUpdatePanelsSystem(ecs_iter_t *it)
             .rw = 0,
             .rh = 0,
         });
+
+        imgui_text("hello!");
 
         end_frame();
     }

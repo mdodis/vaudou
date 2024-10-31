@@ -16,9 +16,8 @@ int vd_r_geo_system_init(VD_R_GeoSystem *s, VD_R_GeoSystemInitInfo *info)
     return 0;
 }
 
-HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info)
+static void create_buffers(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info, VD_R_GPUMesh *result)
 {
-    VD_R_GPUMesh result;
     VD_VK_CHECK(vmaCreateBuffer(
         s->allocator,
         & (VkBufferCreateInfo)
@@ -33,9 +32,9 @@ HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInf
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
         },
-        &result.index.buffer,
-        &result.index.allocation,
-        &result.index.info));
+        &result->index.buffer,
+        &result->index.allocation,
+        &result->index.info));
 
     VD_VK_CHECK(vmaCreateBuffer(
         s->allocator,
@@ -52,21 +51,35 @@ HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInf
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
         },
-        &result.vertex.buffer,
-        &result.vertex.allocation,
-        &result.vertex.info));
+        &result->vertex.buffer,
+        &result->vertex.allocation,
+        &result->vertex.info));
 
-    result.vertex_buffer_address = vkGetBufferDeviceAddress(
+    result->vertex_buffer_address = vkGetBufferDeviceAddress(
         s->device,
         & (VkBufferDeviceAddressInfo)
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .buffer = result.vertex.buffer,
+            .buffer = result->vertex.buffer,
         });
+}
+
+HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info)
+{
+    VD_R_GPUMesh result;
+
+    create_buffers(s, info, &result);
 
     return VD_HANDLEMAP_REGISTER(s->meshes, &result, {
         .ref_mode = VD_HANDLEMAP_REF_MODE_COUNT,
     });
+}
+
+int sgeo_resize(VD_R_GeoSystem *s, HandleOf(VD_R_GPUMesh) mesh, VD_R_MeshCreateInfo *info)
+{
+   VD_R_GPUMesh *meshptr = USE_HANDLE(mesh, VD_R_GPUMesh); 
+   create_buffers(s, info, meshptr);
+   return 0;
 }
 
 void vd_r_geo_system_deinit(VD_R_GeoSystem *s)

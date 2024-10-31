@@ -1832,7 +1832,7 @@ static void render_window_surface(
 
         vkCmdBindIndexBuffer(cmd, mesh_to_draw->index.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        vkCmdDrawIndexed(cmd, mesh_to_draw->index.info.size / sizeof(u32), 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd, mesh_to_draw->num_indices, 1, 0, 0, 0);
     }
     vkCmdEndRendering(cmd);
 
@@ -2174,6 +2174,16 @@ void vd_renderer_write_mesh(
     memcpy(data, info->vertices, bytes_vertices);
     memcpy((char*)data + bytes_vertices, info->indices, bytes_indices);
     vmaUnmapMemory(renderer->allocator, staging_buffer.allocation);
+
+    if (bytes_vertices > mesh->vertex.info.size || bytes_indices > mesh->index.info.size) {
+        sgeo_resize(&renderer->geos, info->mesh, & (VD_R_MeshCreateInfo) {
+            .num_vertices = info->num_vertices,
+            .num_indices = info->num_indices,
+        });
+    }
+
+    mesh->num_indices = info->num_indices;
+    mesh->num_vertices = info->num_vertices;
 
     VkCommandBuffer cmd = vd_renderer_imm_begin(renderer);
 

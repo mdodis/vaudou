@@ -28,6 +28,9 @@ void end_frame();
 
 void render();
 
+void get_draw_list();
+void imgui_text(const char *text);
+
 #ifdef __cplusplus
 }
 #endif

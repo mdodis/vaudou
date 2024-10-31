@@ -53,3 +53,13 @@ void render()
 {
     ImGui::Render();
 }
+
+void get_draw_list()
+{
+    ImDrawData *draw_data = ImGui::GetDrawData();
+}
+
+void imgui_text(const char *text)
+{
+    ImGui::Text("%s", text);
+}

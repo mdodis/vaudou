@@ -1,8 +1,8 @@
-file(GLOB CPP_SOURCES "imguic/*.cpp")
-file(GLOB CPP_HEADERS "imguic/*.h")
+file(GLOB CPP_SOURCES "imguic/module_internal.cpp")
+file(GLOB CPP_HEADERS "imguic/module_internal.h")
 
 add_library(vd-imgui-cadapter STATIC ${CPP_SOURCES} ${CPP_HEADERS})
-target_link_libraries(vd-imgui-cadapter PUBLIC imgui)
+target_link_libraries(vd-imgui-cadapter PRIVATE imgui)
 target_include_directories(vd-imgui-cadapter PUBLIC "imguic/")
 set_target_properties(vd-imgui-cadapter PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 

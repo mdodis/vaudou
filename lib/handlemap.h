@@ -70,6 +70,7 @@ void vd_handlemap__deinit(VD_HandleMap *map);
 
 #define HandleOf(t) VD_Handle
 #define USE_HANDLE(h, t) ((t*)vd_handle_use(&h, 0))
+#define COPY_HANDLE(h)   vd_handlemap_copy(&(h))
 #define DROP_HANDLE(h)   (vd_handle_drop(&(h)))
 #define INVALID_HANDLE() ((VD_Handle) {0})
 

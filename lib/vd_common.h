@@ -202,6 +202,11 @@ static VD_INLINE VD_Allocator *vd_memory_get_system_allocator(void)
     return &System_Allocator;
 }
 
+VD_INLINE void *vd_malloc(VD_Allocator *allocator, size_t size)
+{
+    return (void*)allocator->proc_alloc(0, 0, size, allocator->c);
+}
+
 VD_INLINE umm vd_realloc(VD_Allocator *allocator, umm ptr, size_t prevsize, size_t newsize)
 {
     return allocator->proc_alloc(ptr, prevsize, newsize, allocator->c);
@@ -235,8 +240,9 @@ VD_INLINE u32 vd_pack_unorm_r8g8b8a8(float v[4])
 #endif
 
 #ifndef VD_CUSTOM_PREFIXES
-#define VD(x) x
-#define vd(x) x
+#define VD_(x) x
+#define VD(x)  x
+#define vd(x)  x
 #endif
 
 #endif // VD_COMMON_H

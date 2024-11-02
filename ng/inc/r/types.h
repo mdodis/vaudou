@@ -1,6 +1,7 @@
 #ifndef VD_R_TYPES_H
 #define VD_R_TYPES_H
 
+#include "array.h"
 #include "vd_common.h"
 #include "volk.h"
 #include "vk_mem_alloc.h"
@@ -13,6 +14,7 @@
 enum {
     VD_MAX_SHADERS_PER_MATERIAL = 2,
     VD_MAX_BINDINGS_PER_SHADER  = 4,
+    VD_(MAX_MATERIAL_PROPERTIES) = 8,
     VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL = 3,
     VD_PASS_OPAQUE = 1000,
     VD_PASS_TRANSPARENT = 2000,
@@ -110,6 +112,24 @@ typedef struct {
     size_t      struct_size;
 } BindingInfo;
 
+typedef enum {
+    VD_(PUSH_CONSTANT_TYPE_DEFAULT) = 0,
+    VD_(PUSH_CONSTANT_TYPE_CUSTOM) = 0xFF,
+} VD(PushConstantType);
+
+typedef struct {
+    VD(PushConstantType) type;
+    size_t               size;
+} VD(PushConstantInfo);
+
+typedef struct {
+    BindingInfo binding;
+    union {
+        void                            *pstruct;
+        HandleOf(VD_R_AllocatedImage)   sampler2d;
+    };
+} VD(MaterialProperty);
+
 typedef struct {
     HandleOf(VD_R_GPUShader) shaders[VD_MAX_SHADERS_PER_MATERIAL];
     u32                      num_shaders;
@@ -119,6 +139,7 @@ typedef struct {
     VkFrontFace              cull_face;
     int                      pass;
     int                      num_vertex_attributes;
+    VD(PushConstantInfo)     push_constant;
     struct {
         int                  on;
     } multisample;
@@ -133,26 +154,24 @@ typedef struct {
         VkCompareOp          cmp_op;
     } depth_test;
 
-    /** set = 0, binding = x is reserved for system use. */
-    u32         num_bindings;
-    BindingInfo bindings[VD_MAX_BINDINGS_PER_SHADER];
+    u32                      num_properties;
+    VD(MaterialProperty)     *properties;
 } MaterialBlueprint;
 
 typedef struct {
-    VkPipeline              pipeline;
-    VkPipelineLayout        layout;
-    VkDescriptorSetLayout   property_layout;
-    u32                     num_buffers;
-    VD_R_AllocatedBuffer    buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
-} GPUMaterial;
+    VkPipeline                      pipeline;
+    VkPipelineLayout                layout;
+    VkDescriptorSetLayout           property_layout;
+    u32                             num_properties;
+    VD(MaterialProperty)            properties[VD_(MAX_MATERIAL_PROPERTIES)];
+} VD(GPUMaterialBlueprint);
 
 typedef struct {
-    BindingInfo binding;
-    union {
-        void                            *pstruct;
-        HandleOf(VD_R_AllocatedImage)   sampler2d;
-    };
-} MaterialProperty;
+    HandleOf(VD(GPUMaterialBlueprint))  blueprint;
+    u32                                 num_buffers;
+    VD_R_AllocatedBuffer                buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
+    VD(MaterialProperty)                properties[VD_(MAX_MATERIAL_PROPERTIES)];
+} VD(GPUMaterial);
 
 typedef struct {
     HandleOf(GPUMaterial)   material;

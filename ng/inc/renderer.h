@@ -86,9 +86,13 @@ HandleOf(GPUShader) vd_renderer_create_shader(
     VD_Renderer *renderer,
     GPUShaderCreateInfo *info);
 
-HandleOf(GPUMaterial) vd_renderer_create_material(
+HandleOf(GPUMaterialBlueprint) vd_renderer_create_material_blueprint(
     VD_Renderer *renderer,
     MaterialBlueprint *blueprint);
+
+HandleOf(GPUMaterial) vd_renderer_create_material(
+    VD_Renderer *renderer,
+    HandleOf(GPUMaterialBlueprint) blueprint);
 
 HandleOf(GPUMaterial) vd_renderer_get_default_material(VD_Renderer *renderer);
 

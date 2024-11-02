@@ -7,6 +7,7 @@
 #include "instance.h"
 #include "vd_vk.h"
 
+static void free_material(void *object, void *c);
 static void free_material_blueprint(void *object, void *c);
 
 static VkDescriptorType binding_type_to_vk_descriptor_type(BindingType t);
@@ -78,25 +79,104 @@ int smat_init(SMat *s, SMatInitInfo *info)
     }
     s->num_set0_buffers = buffer_index + 1;
 
+    s->default_push_constant = info->default_push_constant;
+
     VD_HANDLEMAP_INIT(s->materials, {
         .initial_capacity = 64,
         .c = s,
         .allocator = vd_memory_get_system_allocator(),
         .on_free_object = free_material_blueprint,
     });
+
+    VD_HANDLEMAP_INIT(s->blueprints, {
+        .initial_capacity = 64,
+        .c = s,
+        .allocator = vd_memory_get_system_allocator(),
+        .on_free_object = free_material,
+    });
     return 0;
 }
 
-HandleOf(GPUMaterial) smat_new(SMat *s, MaterialBlueprint *b)
+static void alloc_copy_or_zero_properties(
+    MaterialProperty *src,
+    int num_src,
+    MaterialProperty *dst)
 {
-    GPUMaterial result;
+
+    memcpy(dst, src, num_src * sizeof(*src));
+
+    for (int i = 0; i < num_src; ++i) {
+        if (src[i].binding.type == BINDING_TYPE_STRUCT) {
+            dst[i].pstruct = vd_malloc(
+                VD_MM_GLOBAL_ALLOCATOR(),
+                src[i].binding.struct_size);
+
+            if (src[i].pstruct == 0) {
+                memcpy(
+                    dst[i].pstruct,
+                    src[i].pstruct,
+                    src[i].binding.struct_size);
+            } else {
+                memset(dst[i].pstruct, 0, dst[i].binding.struct_size);
+            }
+        }
+    }
+}
+
+HandleOf(GPUMaterial) smat_new_from_blueprint(SMat *s, HandleOf(GPUMaterialBlueprint) b)
+{
+    GPUMaterial result = {0};
+    GPUMaterialBlueprint *blueprint = USE_HANDLE(b, GPUMaterialBlueprint);
+
+    result.blueprint = COPY_HANDLE(b);
+
+    alloc_copy_or_zero_properties(
+        blueprint->properties,
+        blueprint->num_properties,
+        result.properties);
+
+    // Create Uniform Buffers
+    int buffer_index = 0;
+    for (int i = 0; i < blueprint->num_properties; ++i) {
+        if (blueprint->properties[i].binding.type != BINDING_TYPE_STRUCT) {
+            continue;
+        }
+
+        VD_VK_CHECK(vmaCreateBuffer(
+            s->allocator,
+            & (VkBufferCreateInfo)
+            {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = blueprint->properties[i].binding.struct_size,
+                .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            },
+            & (VmaAllocationCreateInfo)
+            {
+                .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
+                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            },
+            &result.buffers[buffer_index].buffer,
+            &result.buffers[buffer_index].allocation,
+            &result.buffers[buffer_index].info));
+    }
+    return VD_HANDLEMAP_REGISTER(s->materials, &result, {
+        .ref_mode = VD_HANDLEMAP_REF_MODE_COUNT,
+    });
+}
+
+HandleOf(GPUMaterialBlueprint) smat_new_blueprint(SMat *s, MaterialBlueprint *b)
+{
+    GPUMaterialBlueprint result;
 
     dynarray VkDescriptorSetLayoutBinding *bindings = 0;
     array_init(bindings, VD_MM_FRAME_ALLOCATOR());
-    array_addn(bindings, b->num_bindings);
+    array_addn(bindings, b->num_properties);
 
-    for (u32 bb = 0; bb < b->num_bindings; ++bb) {
-        BindingInfo *binfo = &b->bindings[bb];
+    alloc_copy_or_zero_properties(b->properties, b->num_properties, result.properties);
+    result.num_properties = b->num_properties;
+
+    for (u32 bb = 0; bb < b->num_properties; ++bb) {
+        BindingInfo *binfo = &b->properties[bb].binding;
 
         bindings[bb] = (VkDescriptorSetLayoutBinding)
         {
@@ -137,7 +217,7 @@ HandleOf(GPUMaterial) smat_new(SMat *s, MaterialBlueprint *b)
                 {
                     .offset = 0,
                     .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                    .size = sizeof(VD_R_GPUPushConstants),
+                    .size = s->default_push_constant.size,
                 },
             },
             .pNext = 0,
@@ -186,33 +266,8 @@ HandleOf(GPUMaterial) smat_new(SMat *s, MaterialBlueprint *b)
         },
         &result.pipeline));
 
-    // Create Uniform Buffers
-    int buffer_index = 0;
-    for (int i = 0; i < b->num_bindings; ++i) {
-        if (b->bindings[i].type != BINDING_TYPE_STRUCT) {
-            continue;
-        }
 
-        VD_VK_CHECK(vmaCreateBuffer(
-            s->allocator,
-            & (VkBufferCreateInfo)
-            {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = b->bindings[i].struct_size,
-                .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            },
-            & (VmaAllocationCreateInfo)
-            {
-                .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
-                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-            },
-            &result.buffers[buffer_index].buffer,
-            &result.buffers[buffer_index].allocation,
-            &result.buffers[buffer_index].info));
-    }
-
-
-    return VD_HANDLEMAP_REGISTER(s->materials, &result, {
+    return VD_HANDLEMAP_REGISTER(s->blueprints, &result, {
         .ref_mode = VD_HANDLEMAP_REF_MODE_COUNT,
     });
 }
@@ -299,7 +354,7 @@ void smat_begin_frame(SMat *s, VD_DescriptorAllocator *descriptor_allocator)
     vd_descriptor_allocator_clear(s->desc_allocator);
 }
 
-GPUMaterialInstance smat_write(SMat *s, MaterialWriteInfo *set0_info, MaterialWriteInfo *info)
+GPUMaterialInstance smat_prep(SMat *s, MaterialWriteInfo *set0_info)
 {
     VkDescriptorSet set0 = write_set(
         s,
@@ -309,20 +364,26 @@ GPUMaterialInstance smat_write(SMat *s, MaterialWriteInfo *set0_info, MaterialWr
         s->set0_layout,
         set0_info);
 
-    GPUMaterial *material = USE_HANDLE(info->material, GPUMaterial);
+    GPUMaterial *material = USE_HANDLE(set0_info->material, GPUMaterial);
+    GPUMaterialBlueprint *blueprint = USE_HANDLE(material->blueprint, GPUMaterialBlueprint);
     int buffer_index = 0;
     VkDescriptorSet property_set = write_set(
         s,
         1,
         material->num_buffers,
         material->buffers,
-        material->property_layout,
-        info);
+        blueprint->property_layout,
+        & (MaterialWriteInfo)
+        {
+            .material = set0_info->material,
+            .num_properties = blueprint->num_properties,
+            .properties = material->properties,
+        });
     return (GPUMaterialInstance) {
         .default_set = set0,
         .property_set = property_set,
         .pass = 0,
-        .material = info->material,
+        .material = set0_info->material,
     };
 }
 
@@ -348,7 +409,17 @@ void smat_deinit(SMat *s)
 static void free_material_blueprint(void *object, void *c)
 {
     SMat *s = (SMat*)c;
-    GPUMaterial *material;
+    GPUMaterialBlueprint *blueprint = (GPUMaterialBlueprint*)object;
+
+    vkDestroyDescriptorSetLayout(s->device, blueprint->property_layout, 0);
+    vkDestroyPipeline(s->device, blueprint->pipeline, 0);
+    vkDestroyPipelineLayout(s->device, blueprint->layout, 0);
+}
+
+static void free_material(void *object, void *c)
+{
+    SMat *s = (SMat*)c;
+    GPUMaterial *material = (GPUMaterial*)object;
 
     for (int i = 0; i < material->num_buffers; ++i) {
         vmaDestroyBuffer(
@@ -357,9 +428,7 @@ static void free_material_blueprint(void *object, void *c)
             material->buffers[i].allocation);
     }
 
-    vkDestroyDescriptorSetLayout(s->device, material->property_layout, 0);
-    vkDestroyPipeline(s->device, material->pipeline, 0);
-    vkDestroyPipelineLayout(s->device, material->layout, 0);
+    DROP_HANDLE(material->blueprint);
 }
 
 static VkDescriptorType binding_type_to_vk_descriptor_type(BindingType t)

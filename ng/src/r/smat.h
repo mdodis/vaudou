@@ -45,4 +45,6 @@ GPUMaterialInstance smat_prep(SMat *s, MaterialWriteInfo *set0_info);
 void smat_end_frame(SMat *s);
 void smat_deinit(SMat *s);
 
+VkShaderStageFlags vd_shader_stage_to_vk_shader_stage(ShaderStage stage);
+
 #endif // !VD_SMAT_H

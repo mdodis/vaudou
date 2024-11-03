@@ -22,6 +22,12 @@ enum {
     VD_PASS_MAX = 100000,
 };
 
+typedef enum {
+    VD_(SHADER_STAGE_VERT_BIT) = 1 << 0,
+    VD_(SHADER_STAGE_FRAG_BIT) = 1 << 1,
+    VD_(SHADER_STAGE_COMP_BIT) = 1 << 1,
+} VD(ShaderStage);
+
 typedef struct {
     uintptr_t opaq;
 } VD(Allocation);
@@ -59,11 +65,6 @@ typedef struct {
     size_t num_vertices;
     size_t num_indices;
 } VD_R_GPUMesh;
-
-typedef struct {
-    VkDeviceAddress vertex_buffer;
-    mat4            obj;
-} VD_R_GPUPushConstants;
 
 typedef struct {
     VkExtent3D          extent;
@@ -128,7 +129,30 @@ typedef enum {
 typedef struct {
     VD(PushConstantType) type;
     size_t               size;
+    VD(ShaderStage)      stage;
 } VD(PushConstantInfo);
+
+typedef struct {
+    VkDeviceAddress vertex_address;
+    mat4            obj;
+} VD(DefaultPushConstant);
+
+typedef struct {
+    VD(PushConstantInfo) info;
+    union {
+        void                    *ptr;
+        VD(DefaultPushConstant) def;
+    };
+} VD(PushConstant);
+
+static VD_INLINE void *vd(get_push_constant_ptr)(VD(PushConstant) *pc)
+{
+    if (pc->info.type == VD(PUSH_CONSTANT_TYPE_DEFAULT)) {
+        return &pc->def;
+    }
+
+    return pc->ptr;
+}
 
 typedef struct {
     BindingInfo binding;
@@ -147,7 +171,10 @@ typedef struct {
     VkFrontFace              cull_face;
     int                      pass;
     int                      num_vertex_attributes;
-    VD(PushConstantInfo)     push_constant;
+    struct {
+        int                  custom;
+        VD(PushConstantInfo) info;
+    } push_constant;
     struct {
         int                  on;
     } multisample;
@@ -172,6 +199,7 @@ typedef struct {
     VkDescriptorSetLayout           property_layout;
     u32                             num_properties;
     VD(MaterialProperty)            properties[VD_(MAX_MATERIAL_PROPERTIES)];
+    VD(PushConstantInfo)            push_constant_info;
 } VD(GPUMaterialBlueprint);
 
 typedef struct {
@@ -197,8 +225,9 @@ typedef struct {
 typedef struct {
     HandleOf(VD_R_GPUMesh)  mesh;
     HandleOf(GPUMaterial)   material;
-    mat4                    transform;
-} RenderObject;
+    VD(PushConstant)        push_constant;
+} VD(RenderObject);
+
 
 void vd_r_generate_sphere_data(
     VD_R_Vertex **vertices,

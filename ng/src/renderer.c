@@ -633,7 +633,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     renderer->svma = svma_create();
     svma_init(renderer->svma, & (SVMAInitInfo) {
+#if VD_VMA_TRACKING
         .track = 1,
+#endif
         .physical_device = renderer->physical_device,
         .device          = renderer->device,
         .instance        = renderer->instance,
@@ -682,7 +684,8 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         .depth_format = renderer->depth_image_format,
         .default_push_constant = {
             .type = PUSH_CONSTANT_TYPE_DEFAULT,
-            .size = sizeof(VD_R_SceneData),
+            .size = sizeof(DefaultPushConstant),
+            .stage = SHADER_STAGE_VERT_BIT,
         },
     });
 
@@ -1807,20 +1810,14 @@ static void render_window_surface(
             });
 
         VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(renderer->render_object_list[i].mesh, VD_R_GPUMesh);
-        VD_R_GPUPushConstants constants = {
-            .vertex_buffer = mesh_to_draw->vertex_buffer_address,
-            .obj = GLM_MAT4_IDENTITY_INIT,
-        };
-
-        glm_mat4_copy(renderer->render_object_list[i].transform, constants.obj);
 
         vkCmdPushConstants(
             cmd,
             blueprintptr->layout,
-            VK_SHADER_STAGE_VERTEX_BIT,
+            vd_shader_stage_to_vk_shader_stage(blueprintptr->push_constant_info.stage),
             0,
-            sizeof(constants),
-            &constants);
+            renderer->render_object_list[i].push_constant.info.size,
+            get_push_constant_ptr(&renderer->render_object_list[i].push_constant));
 
         vkCmdBindDescriptorSets(
             cmd,
@@ -2337,12 +2334,27 @@ void RendererGatherStaticMeshComponentSystem(ecs_iter_t *it)
     WorldTransformComponent *world_transforms = ecs_field(it, WorldTransformComponent, 1);
 
     for (int i = 0; i < it->count; ++i) {
+
+        DefaultPushConstant pc;
+        pc.vertex_address = USE_HANDLE(
+            static_mesh_components[i].mesh,
+            VD_R_GPUMesh)->vertex_buffer_address;
+
+        glm_mat4_copy(world_transforms[i].world, pc.obj);
+
         RenderObject ro = {
             .mesh = static_mesh_components[i].mesh,
             .material = static_mesh_components[i].material,
+            .push_constant = {
+                .info = {
+                    .stage = SHADER_STAGE_VERT_BIT,
+                    .type = PUSH_CONSTANT_TYPE_DEFAULT,
+                    .size = sizeof(DefaultPushConstant),
+                },
+                .def = pc,
+            },
         };
 
-        glm_mat4_copy(world_transforms[i].world, ro.transform);
         vd_renderer_push_render_object(renderer, &ro);
     }
 }

@@ -21,4 +21,12 @@ const u32 VD_MM_Max_Memory_Regions = 16;
 #define VD_VULKAN_OBJECT_NAMES 0
 #endif
 
+#ifdef VD_OPTION_ENABLE_VMA_TRACKING
+#define VD_VMA_TRACKING 1
+#endif
+
+#ifndef VD_VMA_TRACKING
+#define VD_VMA_TRACKING 0
+#endif
+
 #endif

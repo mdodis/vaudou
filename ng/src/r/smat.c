@@ -169,6 +169,11 @@ HandleOf(GPUMaterialBlueprint) smat_new_blueprint(SMat *s, MaterialBlueprint *b)
 {
     GPUMaterialBlueprint result;
 
+    result.push_constant_info = b->push_constant.info;
+    if (!b->push_constant.custom) {
+        result.push_constant_info = s->default_push_constant;
+    }
+
     dynarray VkDescriptorSetLayoutBinding *bindings = 0;
     array_init(bindings, VD_MM_FRAME_ALLOCATOR());
     array_addn(bindings, b->num_properties);
@@ -205,6 +210,13 @@ HandleOf(GPUMaterialBlueprint) smat_new_blueprint(SMat *s, MaterialBlueprint *b)
         result.property_layout,
     };
 
+
+    VkPushConstantRange push_constant_range = {
+        .offset = 0,
+        .stageFlags = vd_shader_stage_to_vk_shader_stage(result.push_constant_info.stage),
+        .size = result.push_constant_info.size,
+    };
+
     VD_VK_CHECK(vkCreatePipelineLayout(
         s->device,
         & (VkPipelineLayoutCreateInfo)
@@ -214,12 +226,7 @@ HandleOf(GPUMaterialBlueprint) smat_new_blueprint(SMat *s, MaterialBlueprint *b)
             .pSetLayouts = set_layouts,
             .pushConstantRangeCount = 1,
             .pPushConstantRanges = (VkPushConstantRange[]) {
-                (VkPushConstantRange)
-                {
-                    .offset = 0,
-                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                    .size = s->default_push_constant.size,
-                },
+                push_constant_range,
             },
             .pNext = 0,
         },
@@ -438,4 +445,15 @@ static VkDescriptorType binding_type_to_vk_descriptor_type(BindingType t)
         case BINDING_TYPE_STRUCT:       return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         default: return 0;
     }
+}
+
+VkShaderStageFlags vd_shader_stage_to_vk_shader_stage(ShaderStage stage)
+{
+    VkShaderStageFlags result = 0;
+
+    if (stage & SHADER_STAGE_VERT_BIT) result |= VK_SHADER_STAGE_VERTEX_BIT;
+    if (stage & SHADER_STAGE_FRAG_BIT) result |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    if (stage & SHADER_STAGE_COMP_BIT) result |= VK_SHADER_STAGE_COMPUTE_BIT;
+
+    return result;
 }

@@ -15,7 +15,7 @@ static VkDescriptorType binding_type_to_vk_descriptor_type(BindingType t);
 int smat_init(SMat *s, SMatInitInfo *info)
 {
     s->device = info->device;
-    s->allocator = info->allocator;
+    s->svma = info->svma;
     s->color_format = info->color_format;
     s->depth_format = info->depth_format;
 
@@ -60,8 +60,8 @@ int smat_init(SMat *s, SMatInitInfo *info)
             continue;
         }
 
-        VD_VK_CHECK(vmaCreateBuffer(
-            s->allocator,
+        svma_create_buffer(
+            s->svma,
             & (VkBufferCreateInfo)
             {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -73,9 +73,10 @@ int smat_init(SMat *s, SMatInitInfo *info)
                 .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
                 .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
             },
-            &s->set0_buffers[buffer_index].buffer,
+            SVMA_CREATE_TRACKING(),
             &s->set0_buffers[buffer_index].allocation,
-            &s->set0_buffers[buffer_index].info));
+            &s->set0_buffers[buffer_index].buffer);
+
     }
     s->num_set0_buffers = buffer_index + 1;
 
@@ -85,14 +86,14 @@ int smat_init(SMat *s, SMatInitInfo *info)
         .initial_capacity = 64,
         .c = s,
         .allocator = vd_memory_get_system_allocator(),
-        .on_free_object = free_material_blueprint,
+        .on_free_object = free_material,
     });
 
     VD_HANDLEMAP_INIT(s->blueprints, {
         .initial_capacity = 64,
         .c = s,
         .allocator = vd_memory_get_system_allocator(),
-        .on_free_object = free_material,
+        .on_free_object = free_material_blueprint,
     });
     return 0;
 }
@@ -102,7 +103,6 @@ static void alloc_copy_or_zero_properties(
     int num_src,
     MaterialProperty *dst)
 {
-
     memcpy(dst, src, num_src * sizeof(*src));
 
     for (int i = 0; i < num_src; ++i) {
@@ -142,8 +142,8 @@ HandleOf(GPUMaterial) smat_new_from_blueprint(SMat *s, HandleOf(GPUMaterialBluep
             continue;
         }
 
-        VD_VK_CHECK(vmaCreateBuffer(
-            s->allocator,
+        svma_create_buffer(
+            s->svma,
             & (VkBufferCreateInfo)
             {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -155,9 +155,10 @@ HandleOf(GPUMaterial) smat_new_from_blueprint(SMat *s, HandleOf(GPUMaterialBluep
                 .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
                 .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
             },
-            &result.buffers[buffer_index].buffer,
+            SVMA_CREATE_TRACKING(),
             &result.buffers[buffer_index].allocation,
-            &result.buffers[buffer_index].info));
+            &result.buffers[buffer_index].buffer);
+
     }
     return VD_HANDLEMAP_REGISTER(s->materials, &result, {
         .ref_mode = VD_HANDLEMAP_REF_MODE_COUNT,
@@ -310,13 +311,10 @@ static VkDescriptorSet write_set(
         switch (p->binding.type) {
             case BINDING_TYPE_STRUCT: {
                 VD_R_AllocatedBuffer *buffer = &buffers[buffer_index++];
-                void *data;
-                vmaMapMemory(
-                    s->allocator,
-                    buffer->allocation,
-                    &data);
+                void *data = svma_map(s->svma, buffer->allocation);
                 memcpy(data, p->pstruct, p->binding.struct_size);
-                vmaUnmapMemory(s->allocator, buffer->allocation);
+
+                svma_unmap(s->svma, buffer->allocation);
 
                 VkDescriptorBufferInfo *binfo = array_addp(buffer_infos);
                 binfo->buffer = buffer->buffer;
@@ -395,8 +393,8 @@ void smat_end_frame(SMat *s)
 void smat_deinit(SMat *s)
 {
     for (int i = 0; i < s->num_set0_buffers; ++i) {
-        vmaDestroyBuffer(
-            s->allocator,
+        svma_free_buffer(
+            s->svma,
             s->set0_buffers[i].buffer,
             s->set0_buffers[i].allocation);
     }
@@ -404,6 +402,7 @@ void smat_deinit(SMat *s)
     vkDestroyDescriptorSetLayout(s->device, s->set0_layout, 0);
     vkDestroySampler(s->device, s->samplers.linear, 0);
     VD_HANDLEMAP_DEINIT(s->materials);
+    VD_HANDLEMAP_DEINIT(s->blueprints);
 }
 
 static void free_material_blueprint(void *object, void *c)
@@ -422,8 +421,8 @@ static void free_material(void *object, void *c)
     GPUMaterial *material = (GPUMaterial*)object;
 
     for (int i = 0; i < material->num_buffers; ++i) {
-        vmaDestroyBuffer(
-            s->allocator,
+        svma_free_buffer(
+            s->svma,
             material->buffers[i].buffer,
             material->buffers[i].allocation);
     }

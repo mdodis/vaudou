@@ -13,7 +13,7 @@ int vd_texture_system_init(VD_R_TextureSystem *s, VD_R_TextureSystemInitInfo *in
         .c = s,
     });
     s->device = info->device;
-    s->allocator = info->allocator;
+    s->svma = info->svma;
     return 0;
 }
 
@@ -28,8 +28,8 @@ Handle vd_texture_system_new(VD_R_TextureSystem *s, VD_R_TextureCreateInfo *info
         mip_levels = floorf(log2f(glm_max(info->extent.width, info->extent.height))) + 1;
     }
 
-    VD_VK_CHECK(vmaCreateImage(
-        s->allocator,
+    svma_create_texture(
+        s->svma,
         & (VkImageCreateInfo)
         {
             .sType          = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -48,9 +48,9 @@ Handle vd_texture_system_new(VD_R_TextureSystem *s, VD_R_TextureCreateInfo *info
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         },
-        &result.image,
+        SVMA_CREATE_TRACKING(),
         &result.allocation,
-        0));
+        &result.image);
 
     VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
     if (info->format == VK_FORMAT_D32_SFLOAT) {
@@ -94,5 +94,5 @@ static void free_texture(void *object, void *c)
     VD_R_TextureSystem *s = (VD_R_TextureSystem*)c;
     VD_R_AllocatedImage *image = (VD_R_AllocatedImage*)object;
     vkDestroyImageView(s->device, image->view, 0);
-    vmaDestroyImage(s->allocator, image->image, image->allocation);
+    svma_free_texture(s->svma, image->image, image->allocation);
 }

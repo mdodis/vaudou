@@ -6,7 +6,7 @@ static void free_geo(void *object, void *c);
 int vd_r_geo_system_init(VD_R_GeoSystem *s, VD_R_GeoSystemInitInfo *info)
 {
     s->device = info->device;
-    s->allocator = info->allocator;
+    s->svma = info->svma;
     VD_HANDLEMAP_INIT(s->meshes, {
         .allocator = vd_memory_get_system_allocator(),
         .initial_capacity = 64,
@@ -18,8 +18,8 @@ int vd_r_geo_system_init(VD_R_GeoSystem *s, VD_R_GeoSystemInitInfo *info)
 
 static void create_buffers(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info, VD_R_GPUMesh *result)
 {
-    VD_VK_CHECK(vmaCreateBuffer(
-        s->allocator,
+    svma_create_buffer(
+        s->svma,
         & (VkBufferCreateInfo)
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -32,12 +32,12 @@ static void create_buffers(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info, VD_R_GP
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
         },
-        &result->index.buffer,
+        SVMA_CREATE_TRACKING(),
         &result->index.allocation,
-        &result->index.info));
+        &result->index.buffer);
 
-    VD_VK_CHECK(vmaCreateBuffer(
-        s->allocator,
+    svma_create_buffer(
+        s->svma,
         & (VkBufferCreateInfo)
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -51,9 +51,9 @@ static void create_buffers(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info, VD_R_GP
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
         },
-        &result->vertex.buffer,
+        SVMA_CREATE_TRACKING(),
         &result->vertex.allocation,
-        &result->vertex.info));
+        &result->vertex.buffer);
 
     result->vertex_buffer_address = vkGetBufferDeviceAddress(
         s->device,
@@ -92,7 +92,7 @@ static void free_geo(void *object, void *c)
     VD_R_GeoSystem *s = (VD_R_GeoSystem*)c;
     VD_R_GPUMesh *m = (VD_R_GPUMesh*)object;
 
-    vmaDestroyBuffer(s->allocator, m->index.buffer, m->index.allocation);
-    vmaDestroyBuffer(s->allocator, m->vertex.buffer, m->vertex.allocation);
+    svma_free_buffer(s->svma, m->index.buffer, m->index.allocation);
+    svma_free_buffer(s->svma, m->vertex.buffer, m->vertex.allocation);
     m->vertex_buffer_address = 0;
 }

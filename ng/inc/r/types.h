@@ -23,17 +23,25 @@ enum {
 };
 
 typedef struct {
+    uintptr_t opaq;
+} VD(Allocation);
+
+typedef struct {
+    const char  *file;
+    size_t      line;
+} VD(AllocationTracking);
+
+typedef struct {
     VkImage         image;
     VkImageView     view;
-    VmaAllocation   allocation;
+    VD(Allocation)  allocation;
     VkExtent3D      extent;
     VkFormat        format;
 } VD_R_AllocatedImage; 
 
 typedef struct {
     VkBuffer            buffer;
-    VmaAllocation       allocation;
-    VmaAllocationInfo   info;
+    VD(Allocation)      allocation;
 } VD_R_AllocatedBuffer;
 
 typedef struct {

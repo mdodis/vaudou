@@ -2,12 +2,13 @@
 #define VD_SMAT_H
 #include "r/types.h"
 #include "r/descriptor_allocator.h"
+#include "r/svma.h"
 
 typedef struct {
     VD_HANDLEMAP GPUMaterial            *materials;
     VD_HANDLEMAP GPUMaterialBlueprint   *blueprints;
     VkDevice                 device;
-    VmaAllocator             allocator;
+    SVMA                     *svma;
     VkDescriptorSetLayout    set0_layout;
     VD_DescriptorAllocator   *desc_allocator;
     VD_R_AllocatedBuffer     set0_buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
@@ -23,7 +24,7 @@ typedef struct {
 
 typedef struct {
     VkDevice                device;
-    VmaAllocator            allocator;
+    SVMA                    *svma;
 
     u32                     num_set0_bindings;
     BindingInfo             *set0_bindings;

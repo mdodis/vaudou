@@ -2,16 +2,17 @@
 #define VD_R_GEO_SYSTEM_H
 #include "r/types.h"
 #include "handlemap.h"
+#include "r/svma.h"
 
 typedef struct {
     VD_HANDLEMAP VD_R_GPUMesh   *meshes;
     VkDevice                    device;
-    VmaAllocator                allocator;
+    SVMA                        *svma;
 } VD_R_GeoSystem;
 
 typedef struct {
     VkDevice        device;
-    VmaAllocator    allocator;
+    SVMA            *svma;
 } VD_R_GeoSystemInitInfo;
 
 int vd_r_geo_system_init(VD_R_GeoSystem *s, VD_R_GeoSystemInitInfo *info);

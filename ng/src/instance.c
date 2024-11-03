@@ -142,7 +142,8 @@ void vd_instance_main(VD_Instance *instance)
     while (!instance->should_close) {
         ecs_progress(instance->world, 0.0f);
     }
-    
+
+    ecs_quit(instance->world);
 }
 
 void vd_instance_deinit(VD_Instance *instance)

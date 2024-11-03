@@ -8,6 +8,7 @@
 #include "r/geo_system.h"
 #include "r/texture_system.h"
 #include "r/smat.h"
+#include "r/svma.h"
 #include "vd_common.h"
 #include "renderer.h"
 #include "default_shaders.h"
@@ -52,14 +53,13 @@ struct VD_Renderer {
     VD_R_GeoSystem                      geos;
     SShader                             sshader;
     SMat                                smat;
+    SVMA                                *svma;
 
 // ----RENDERING DEVICES----------------------------------------------------------------------------
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;
 
     VD_DeletionQueue                    deletion_queue;
-
-    VmaAllocator                        allocator;
 
     struct {
         u32                             queue_family_index;
@@ -631,36 +631,13 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     TracyCZoneEnd(Create_Logical_Device);
 // ----VMA------------------------------------------------------------------------------------------
 
-    VD_VK_CHECK(vmaCreateAllocator(
-        & (VmaAllocatorCreateInfo)
-        {
-            .device                     = renderer->device,
-            .physicalDevice             = renderer->physical_device,
-            .instance                   = renderer->instance,
-            .flags                      = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-            .pVulkanFunctions = & (VmaVulkanFunctions) {
-                .vkGetInstanceProcAddr                  = vkGetInstanceProcAddr,
-                .vkGetDeviceProcAddr                    = vkGetDeviceProcAddr,
-                .vkAllocateMemory                       = vkAllocateMemory,
-                .vkBindBufferMemory                     = vkBindBufferMemory,
-                .vkBindImageMemory                      = vkBindImageMemory,
-                .vkCreateBuffer                         = vkCreateBuffer,
-                .vkCreateImage                          = vkCreateImage,
-                .vkDestroyBuffer                        = vkDestroyBuffer,
-                .vkDestroyImage                         = vkDestroyImage,
-                .vkFlushMappedMemoryRanges              = vkFlushMappedMemoryRanges,
-                .vkFreeMemory                           = vkFreeMemory,
-                .vkGetBufferMemoryRequirements          = vkGetBufferMemoryRequirements,
-                .vkGetImageMemoryRequirements           = vkGetImageMemoryRequirements,
-                .vkGetPhysicalDeviceMemoryProperties    = vkGetPhysicalDeviceMemoryProperties,
-                .vkGetPhysicalDeviceProperties          = vkGetPhysicalDeviceProperties,
-                .vkInvalidateMappedMemoryRanges         = vkInvalidateMappedMemoryRanges,
-                .vkMapMemory                            = vkMapMemory,
-                .vkUnmapMemory                          = vkUnmapMemory,
-                .vkCmdCopyBuffer                        = vkCmdCopyBuffer,
-            },
-        },
-        &renderer->allocator));
+    renderer->svma = svma_create();
+    svma_init(renderer->svma, & (SVMAInitInfo) {
+        .track = 1,
+        .physical_device = renderer->physical_device,
+        .device          = renderer->device,
+        .instance        = renderer->instance,
+    });
 
 // ----DELETION QUEUE-------------------------------------------------------------------------------
     vd_deletion_queue_init(
@@ -677,12 +654,12 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
 // ----SYSTEMS--------------------------------------------------------------------------------------
     vd_texture_system_init(&renderer->textures, & (VD_R_TextureSystemInitInfo) {
-        .allocator = renderer->allocator,
+        .svma = renderer->svma,
         .device = renderer->device,
     });
 
     vd_r_geo_system_init(&renderer->geos, & (VD_R_GeoSystemInitInfo) {
-        .allocator = renderer->allocator,
+        .svma = renderer->svma,
         .device = renderer->device,
     });
 
@@ -692,7 +669,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
     smat_init(&renderer->smat, & (SMatInitInfo) {
         .device = renderer->device,
-        .allocator = renderer->allocator,
+        .svma = renderer->svma,
         .num_set0_bindings = 1,
         .set0_bindings = (BindingInfo[]) {
             (BindingInfo)
@@ -1426,8 +1403,8 @@ static void create_swapchain_image_views_and_framebuffers(
     
 // ----COLOR IMAGE----------------------------------------------------------------------------------
     out_color_image->format = renderer->color_image_format;
-    VD_VK_CHECK(vmaCreateImage(
-        renderer->allocator,
+    svma_create_texture(
+        renderer->svma,
         & (VkImageCreateInfo)
         {
             .sType                  = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -1448,9 +1425,9 @@ static void create_swapchain_image_views_and_framebuffers(
             .requiredFlags          = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             .usage                  = VMA_MEMORY_USAGE_GPU_ONLY,
         },
-        &out_color_image->image,
+        SVMA_CREATE_TRACKING(),
         &out_color_image->allocation,
-        0));
+        &out_color_image->image);
 
     name_object(
         renderer,
@@ -1484,8 +1461,8 @@ static void create_swapchain_image_views_and_framebuffers(
 
 // ----DEPTH IMAGE----------------------------------------------------------------------------------
     out_depth_image->format = renderer->depth_image_format;
-    VD_VK_CHECK(vmaCreateImage(
-        renderer->allocator,
+    svma_create_texture(
+        renderer->svma,
         & (VkImageCreateInfo)
         {
             .sType                  = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -1503,9 +1480,9 @@ static void create_swapchain_image_views_and_framebuffers(
             .requiredFlags          = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             .usage                  = VMA_MEMORY_USAGE_GPU_ONLY,
         },
-        &out_depth_image->image,
+        SVMA_CREATE_TRACKING(),
         &out_depth_image->allocation,
-        0));
+        &out_depth_image->image);
 
     name_object(
         renderer,
@@ -1617,8 +1594,8 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
     vkDestroyImageView(renderer->device, ws->color_image.view, 0);
     vkDestroyImageView(renderer->device, ws->depth_image.view, 0);
-    vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
-    vmaDestroyImage(renderer->allocator, ws->depth_image.image, ws->depth_image.allocation);
+    svma_free_texture(renderer->svma, ws->color_image.image, ws->color_image.allocation);
+    svma_free_texture(renderer->svma, ws->depth_image.image, ws->depth_image.allocation);
 
     for (int i = 0; i < array_len(ws->frame_data); ++i) {
         vd_deletion_queue_flush(&ws->frame_data[i].deletion_queue);
@@ -1639,6 +1616,8 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
 
 int vd_renderer_deinit(VD_Renderer *renderer)
 {
+    vkDeviceWaitIdle(renderer->device);
+    smat_deinit(&renderer->smat);
     vd_texture_system_deinit(&renderer->textures);
     vd_r_geo_system_deinit(&renderer->geos);
     vd_r_sshader_deinit(&renderer->sshader);
@@ -1646,7 +1625,7 @@ int vd_renderer_deinit(VD_Renderer *renderer)
     vkDestroyFence(renderer->device, renderer->imm.fence, 0);
 
     vd_deletion_queue_flush(&renderer->deletion_queue);
-    vmaDestroyAllocator(renderer->allocator);
+    svma_deinit(renderer->svma);
     vkDestroyDevice(renderer->device, 0);
 #if VD_VALIDATION_LAYERS
     renderer->vkDestroyDebugUtilsMessengerEXT(renderer->instance, renderer->debug_messenger, 0);
@@ -1944,8 +1923,8 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
 {
     VD_R_AllocatedBuffer result;
 
-    VD_VK_CHECK(vmaCreateBuffer(
-        renderer->allocator,
+    svma_create_buffer(
+        renderer->svma,
         & (VkBufferCreateInfo)
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1957,23 +1936,21 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
             .usage = usage,
             .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
         },
-        &result.buffer,
+        SVMA_CREATE_TRACKING(),
         &result.allocation,
-        &result.info));
+        &result.buffer);
 
     return result;
 }
 
 void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
 {
-    void *data;
-    vmaMapMemory(renderer->allocator, buffer->allocation, &data);
-    return data;
+    return svma_map(renderer->svma, buffer->allocation);
 }
 
 void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
 {
-    vmaUnmapMemory(renderer->allocator, buffer->allocation);
+    svma_unmap(renderer->svma, buffer->allocation);
 }
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer)
@@ -1983,7 +1960,7 @@ VkDevice vd_renderer_get_device(VD_Renderer *renderer)
 
 void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
 {
-    vmaDestroyBuffer(renderer->allocator, buffer->buffer, buffer->allocation);
+    svma_free_buffer(renderer->svma, buffer->buffer, buffer->allocation);
 }
 
 VD_Handle vd_renderer_create_texture(
@@ -2061,7 +2038,7 @@ void vd_renderer_destroy_texture(
     VD_R_AllocatedImage *image)
 {
     vkDestroyImageView(renderer->device, image->view, 0);
-    vmaDestroyImage(renderer->allocator, image->image, image->allocation);
+    svma_free_texture(renderer->svma, image->image, image->allocation);
 }
 
 VD_R_GPUMesh vd_renderer_upload_mesh(
@@ -2106,11 +2083,10 @@ VD_R_GPUMesh vd_renderer_upload_mesh(
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_CPU_ONLY);
 
-    void *data;
-    vmaMapMemory(renderer->allocator, staging_buffer.allocation, &data);
+    void *data = svma_map(renderer->svma, staging_buffer.allocation);
     memcpy(data, vertices, bytes_vertices);
     memcpy((char*)data + bytes_vertices, indices, bytes_indices);
-    vmaUnmapMemory(renderer->allocator, staging_buffer.allocation);
+    svma_unmap(renderer->svma, staging_buffer.allocation);
 
     VkCommandBuffer cmd = vd_renderer_imm_begin(renderer);
 
@@ -2196,13 +2172,15 @@ void vd_renderer_write_mesh(
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_CPU_ONLY);
 
-    void *data;
-    vmaMapMemory(renderer->allocator, staging_buffer.allocation, &data);
+    void *data = svma_map(renderer->svma, staging_buffer.allocation);
     memcpy(data, info->vertices, bytes_vertices);
     memcpy((char*)data + bytes_vertices, info->indices, bytes_indices);
-    vmaUnmapMemory(renderer->allocator, staging_buffer.allocation);
+    svma_unmap(renderer->svma, staging_buffer.allocation);
 
-    if (bytes_vertices > mesh->vertex.info.size || bytes_indices > mesh->index.info.size) {
+    size_t vertex_size = svma_get_size(renderer->svma, mesh->vertex.allocation);
+    size_t index_size = svma_get_size(renderer->svma, mesh->index.allocation);
+
+    if (bytes_vertices > vertex_size || bytes_indices > index_size) {
         sgeo_resize(&renderer->geos, info->mesh, & (VD_R_MeshCreateInfo) {
             .num_vertices = info->num_vertices,
             .num_indices = info->num_indices,
@@ -2305,7 +2283,7 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
         vkDeviceWaitIdle(renderer->device);
 
         vkDestroyImageView(renderer->device, ws->color_image.view, 0);
-        vmaDestroyImage(renderer->allocator, ws->color_image.image, ws->color_image.allocation);
+        svma_free_texture(renderer->svma, ws->color_image.image, ws->color_image.allocation);
 
         for (int j = 0; j < array_len(ws->image_views); ++j) {
             vkDestroyImageView(renderer->device, ws->image_views[j], 0);

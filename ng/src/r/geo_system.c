@@ -62,6 +62,9 @@ static void create_buffers(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info, VD_R_GP
             .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
             .buffer = result->vertex.buffer,
         });
+
+    result->num_indices = info->num_indices;
+    result->num_vertices = info->num_vertices;
 }
 
 HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInfo *info)
@@ -78,7 +81,10 @@ HandleOf(VD_R_GPUMesh) vd_r_geo_system_new(VD_R_GeoSystem *s, VD_R_MeshCreateInf
 int sgeo_resize(VD_R_GeoSystem *s, HandleOf(VD_R_GPUMesh) mesh, VD_R_MeshCreateInfo *info)
 {
    VD_R_GPUMesh *meshptr = USE_HANDLE(mesh, VD_R_GPUMesh); 
-   create_buffers(s, info, meshptr);
+   if (meshptr->num_vertices < info->num_vertices || meshptr->num_indices < info->num_indices) {
+       free_geo(meshptr, s);
+       create_buffers(s, info, meshptr);
+   }
    return 0;
 }
 

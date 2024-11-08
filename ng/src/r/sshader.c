@@ -10,6 +10,10 @@ const char *GLSL_PREINCLUDE =
 #include "shd/generated/vd.glsl"
 ;
 
+const char *GLSL_VD_STRUCTS = 
+#include "shd/generated/vd.structs.glsl"
+;
+
 static void free_shader(void *object, void *c);
 static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg);
 
@@ -26,9 +30,10 @@ int vd_r_sshader_init(SShader *s, SShaderInitInfo *info)
     s->compiler = vd_shdc_create();
     vd_shdc_init(s->compiler, &(VD_SHDC_InitInfo) {
         .cb_error = vd_shdc_log_error,
-        .num_include_mappings = 1,
+        .num_include_mappings = 2,
         .include_mappings = (VD_SHDC_IncludeMapping[]) {
             (VD_SHDC_IncludeMapping) { .file = "vd.glsl", .code = GLSL_PREINCLUDE },
+            (VD_SHDC_IncludeMapping) { .file = "vd.structs.glsl", .code = GLSL_VD_STRUCTS },
         },
     });
     return 0;

@@ -1,0 +1,10 @@
+"const float PI = 3.14159265359;\n"
+"\n"
+"struct Vertex {\n"
+"	vec3 position;\n"
+"	float uv_x;\n"
+"	vec3 normal;\n"
+"	float uv_y;\n"
+"	vec4 color;\n"
+"}; \n"
+"";

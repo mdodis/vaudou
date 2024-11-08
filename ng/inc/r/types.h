@@ -226,6 +226,8 @@ typedef struct {
     HandleOf(VD_R_GPUMesh)  mesh;
     HandleOf(GPUMaterial)   material;
     VD(PushConstant)        push_constant;
+    u32                     index_count;
+    u32                     first_index;
 } VD(RenderObject);
 
 

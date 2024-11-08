@@ -1,18 +1,36 @@
+#define VD_INTERNAL_SOURCE_FILE 1
 #include "vd-imgui/module.h"
 #include "builtin.h"
 #include "module_internal.h"
 #include "r/types.h"
 #include "instance.h"
 #include "renderer.h"
+#include "mm.h"
+
+const char *GUI_VERT_SHADER_SOURCE =
+#include "shd/generated/gui.vert"
+;
+
+const char *GUI_FRAG_SHADER_SOURCE =
+#include "shd/generated/gui.frag"
+;
 
 typedef struct {
     VD_Renderer *renderer;
     HandleOf(VD_R_AllocatedImage) font_image;
     HandleOf(VD_R_GPUMesh) mesh_data;
+    HandleOf(GPUMaterialBlueprint) blueprint;
     HandleOf(GPUMaterial) material;
 } BackendData;
 
+typedef struct {
+    VkDeviceAddress vertex_buffer;
+    vec2 scale;
+    vec2 translate;
+} GuiPushConstant;
+
 static void ImGuiUpdatePanelsSystem(ecs_iter_t *it);
+static void CollectMeshesSystem(ecs_iter_t *it);
 
 ECS_COMPONENT_DECLARE(ImGuiPanel);
 
@@ -32,11 +50,22 @@ void VdImGuiImport(ecs_world_t *world)
         .entity = ecs_entity(world,
         {
             .name = "ImGuiUpdatePanelsSystem",
+            .add = ecs_ids( ecs_dependson(EcsPostUpdate) ),
         }),
         .query.terms = {
             (ecs_term_t) { .id = ecs_id(ImGuiPanel), .inout = EcsIn },
         },
         .callback = ImGuiUpdatePanelsSystem,
+    });
+
+    ecs_system(world,
+    {
+        .entity = ecs_entity(world,
+        {
+            .name = "Collect Meshes System",
+            .add = ecs_ids( ecs_dependson(EcsPreStore) ),
+        }),
+        .callback = CollectMeshesSystem,
     });
 
     vd_instance_set(ecs_singleton_get(world, Application)->instance);
@@ -64,6 +93,50 @@ void VdImGuiImport(ecs_world_t *world)
         .num_indices = 8,
         .num_vertices = 8,
     });
+
+    HandleOf(GPUShader) vert = vd_renderer_create_shader(renderer, & (GPUShaderCreateInfo) {
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .sourcecode = GUI_VERT_SHADER_SOURCE,
+        .sourcecode_len = strlen(GUI_VERT_SHADER_SOURCE),
+    });
+
+    HandleOf(GPUShader) frag = vd_renderer_create_shader(renderer, & (GPUShaderCreateInfo) {
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .sourcecode = GUI_FRAG_SHADER_SOURCE,
+        .sourcecode_len = strlen(GUI_FRAG_SHADER_SOURCE),
+    });
+
+    backend->blueprint = vd_renderer_create_material_blueprint(renderer, & (MaterialBlueprint) {
+        .pass = 0,
+        .num_shaders = 2,
+        .shaders =
+        {
+            vert,
+            frag,
+        },
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .polygon_mode = VK_POLYGON_MODE_FILL,
+        .num_properties = 1,
+        .properties = (MaterialProperty[]) 
+        {
+            (MaterialProperty)
+            {
+                .binding.type = BINDING_TYPE_SAMPLER2D,
+            }
+        },
+        .push_constant = {
+            .info.type = PUSH_CONSTANT_TYPE_CUSTOM,
+            .info.stage = SHADER_STAGE_VERT_BIT,
+            .info.size = sizeof(GuiPushConstant),
+        },
+    });
+
+    backend->material = vd_renderer_create_material(renderer, backend->blueprint);
+
+    USE_HANDLE(backend->material, GPUMaterial)->properties[0].sampler2d = backend->font_image;
+
+    ecs_entity_t panel_entity = ecs_entity(world, { .name = "imgui panel 1" });
+    ecs_add(world, panel_entity, ImGuiPanel);
 }
 
 static void ImGuiUpdatePanelsSystem(ecs_iter_t *it)
@@ -85,4 +158,62 @@ static void ImGuiUpdatePanelsSystem(ecs_iter_t *it)
     }
 
     render();
+}
+
+static void CollectMeshesSystem(ecs_iter_t *it)
+{
+    DrawList draw_list = get_draw_list();
+
+    if (draw_list == 0) {
+        return;
+    }
+
+    u32 *indices = 0;
+    VD_R_Vertex *vertices = 0;
+    size_t indices_write_offset = 0;
+    size_t vertices_write_offset = 0;
+
+    array_init(indices, VD_MM_FRAME_ALLOCATOR());
+    array_init(vertices, VD_MM_FRAME_ALLOCATOR());
+
+    array_addn(indices, draw_list_indx_count(draw_list));
+    array_addn(vertices, draw_list_vert_count(draw_list));
+
+    for (size_t i = 0; i < draw_list_cmdlist_count(draw_list); ++i) {
+        CmdList cmd_list = draw_list_get_cmdlist(draw_list, i);
+
+        u16 *indx_ptr = cmd_list_indx_ptr(cmd_list);
+        for (size_t j = 0; j < cmd_list_indx_count(cmd_list); ++j) {
+            indices[indices_write_offset + j] = indx_ptr[j];
+        }
+        indices_write_offset += cmd_list_indx_count(cmd_list);
+
+        for (size_t j = 0; j < cmd_list_vert_count(cmd_list); ++j) {
+            VD_R_Vertex v;
+            cmd_list_vert_col(cmd_list, j, v.color);
+            cmd_list_vert_pos(cmd_list, j, v.position);
+            v.position[2] = 0.0f;
+            vec2 uv;
+            cmd_list_vert_tex(cmd_list, j, uv);
+            v.uv_x = uv[0];
+            v.uv_y = uv[1];
+            vertices[vertices_write_offset + j] = v;
+        }
+        vertices_write_offset += cmd_list_indx_count(cmd_list);
+    }
+
+    VD_Renderer *renderer = vd_instance_get_renderer(vd_instance_get());
+    BackendData *backend = get_backend_data();
+    vd_renderer_write_mesh(renderer, & (VD_R_MeshWriteInfo) {
+        .mesh = backend->mesh_data,
+        .num_indices = array_len(indices),
+        .num_vertices = array_len(vertices),
+        .vertices = vertices,
+        .indices = indices,
+    });
+    
+    for (size_t i = 0; i < draw_list_cmdlist_count(draw_list); ++i) {
+        CmdList cmd_list = draw_list_get_cmdlist(draw_list, i);
+    }
+
 }

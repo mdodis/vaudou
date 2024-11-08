@@ -14,6 +14,7 @@ void init_imgui(InitInfo *info)
     io.BackendPlatformUserData = backend_data;
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
 
     io.BackendRendererName = "vaudou";
 
@@ -54,9 +55,64 @@ void render()
     ImGui::Render();
 }
 
-void get_draw_list()
+DrawList get_draw_list()
 {
     ImDrawData *draw_data = ImGui::GetDrawData();
+    if (draw_data == 0 || draw_data->CmdListsCount == 0) {
+        return 0;
+    }
+
+    return draw_data;
+}
+
+size_t draw_list_indx_count(DrawList list)
+{
+    return ((ImDrawData*)list)->TotalIdxCount;
+}
+
+size_t draw_list_vert_count(DrawList list)
+{
+    return ((ImDrawData*)list)->TotalVtxCount;
+}
+
+size_t draw_list_cmdlist_count(DrawList list)
+{
+    return ((ImDrawData*)list)->CmdListsCount;
+}
+
+CmdList draw_list_get_cmdlist(DrawList list, size_t i)
+{
+    return (CmdList)((ImDrawData*)list)->CmdLists[i];
+}
+
+unsigned int cmd_list_indx_count(CmdList list)
+{
+    return ((ImDrawList*)list)->IdxBuffer.size();
+}
+
+unsigned short *cmd_list_indx_ptr(CmdList list)
+{
+    return ((ImDrawList*)list)->IdxBuffer.begin();
+}
+
+unsigned int cmd_list_vert_count(CmdList list)
+{
+    return ((ImDrawList*)list)->VtxBuffer.size();
+}
+
+void cmd_list_vert_pos(CmdList list, unsigned int i, float *pos)
+{
+    memcpy(pos, &((ImDrawList*)list)->VtxBuffer[i].pos, sizeof(float) * 2);
+}
+
+void cmd_list_vert_tex(CmdList list, unsigned int i, float *tex)
+{
+    memcpy(tex, &((ImDrawList*)list)->VtxBuffer[i].uv, sizeof(float) * 2);
+}
+
+void cmd_list_vert_col(CmdList list, unsigned int i, float *col)
+{
+    memcpy(col, &((ImDrawList*)list)->VtxBuffer[i].col, sizeof(float) * 4);
 }
 
 void imgui_text(const char *text)

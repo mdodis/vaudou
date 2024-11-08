@@ -65,10 +65,30 @@ void BuiltinImport(ecs_world_t *world)
 		EcsPostLoad,
 		WindowComponent,
 		Size2D);
-    ECS_SYSTEM_DEFINE(
-        world,
-        RendererGatherStaticMeshComponentSystem,
-        EcsPreStore,
-        StaticMeshComponent,
-        WorldTransformComponent);
+
+    ecs_system(world, {
+        .entity = ecs_entity(world,
+        {
+            .name = "Renderer Gather Static Mesh Component System",
+            .add = ecs_ids(ecs_dependson(EcsPreStore)),
+        }),
+        .query.terms =
+        {
+            {
+                .id = ecs_id(StaticMeshComponent),
+                .inout = EcsIn,
+            },
+            {
+                .id = ecs_id(WorldTransformComponent),
+                .inout = EcsIn,
+            },
+            {
+                .id = ecs_id(WindowSurfaceComponent),
+                .inout = EcsIn,
+                .src.id = EcsCascade | EcsUp,
+                .oper = EcsAnd,
+            },
+        },
+        .callback = RendererGatherStaticMeshComponentSystem,
+    });
 }

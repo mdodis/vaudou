@@ -154,6 +154,8 @@ typedef bool VD_bool;
  */
 #define VD_UNUSED(x) (void)(x)
 
+#define PtrTo(x) x*
+
 /* ----LIMITS------------------------------------------------------------------------------------ */
 #define VD_U8_MAX    UINT8_MAX
 #define VD_U16_MAX   UINT16_MAX

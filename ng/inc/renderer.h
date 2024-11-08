@@ -16,6 +16,14 @@ typedef struct VD_Renderer  VD_Renderer;
 typedef struct ecs_iter_t   ecs_iter_t;
 typedef struct ecs_world_t  ecs_world_t;
 
+typedef enum {
+    VD_(RENDERER_DEFAULT_TEXTURE_WHITE),
+    VD_(RENDERER_DEFAULT_TEXTURE_ERROR),
+    VD_(RENDERER_DEFAULT_MESH_CUBE),
+    VD_(RENDERER_DEFAULT_MESH_SPHERE),
+    VD_(RENDERER_DEFAULT_MATERIAL_PBROPAQUE),
+} VD(RendererDefaultHandleSlot);
+
 typedef struct {
     VD_Instance     *instance;
     ecs_world_t     *world;
@@ -49,6 +57,7 @@ struct WindowSurfaceComponent {
     int                             current_frame;
     VD_R_AllocatedImage             color_image;
     VD_R_AllocatedImage             depth_image;
+    VD_ARRAY VD(RenderObject)       *render_list;
 };
 
 VD_Renderer *vd_renderer_create();
@@ -69,6 +78,8 @@ void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer
 void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
+
+Handle vd_renderer_get_default_handle(VD_Renderer *renderer, VD(RendererDefaultHandleSlot) slot);
 
 HandleOf(VD_R_AllocatedImage) vd_renderer_create_texture(
     VD_Renderer *renderer,
@@ -94,9 +105,12 @@ HandleOf(GPUMaterial) vd_renderer_create_material(
     VD_Renderer *renderer,
     HandleOf(GPUMaterialBlueprint) blueprint);
 
-HandleOf(GPUMaterial) vd_renderer_get_default_material(VD_Renderer *renderer);
+HandleOf(GPUMaterialBlueprint) vd_renderer_get_default_material(VD_Renderer *renderer);
 
-void vd_renderer_push_render_object(VD_Renderer *renderer, RenderObject *render_object);
+void vd_renderer_push_render_object(
+    VD_Renderer *renderer,
+    WindowSurfaceComponent *ws,
+    RenderObject *render_object);
 
 void vd_renderer_upload_texture_data(
     VD_Renderer *renderer,

@@ -80,8 +80,6 @@ struct VD_Renderer {
         VkCommandPool           command_pool;
     } imm;
 
-    dynarray RenderObject *render_object_list;
-
 // ----PRIMITIVES-----------------------------------------------------------------------------------
     struct {
         HandleOf(VD_R_GPUMesh)  quad;
@@ -967,100 +965,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
         TracyCZoneEnd(Create_Pipeline_Opaque);
     }
 
-    array_init(renderer->render_object_list, vd_memory_get_system_allocator());
-
 // ----CVARS----------------------------------------------------------------------------------------
     VD_CVS_SET_INT("r.inflight-frame-count", 2);
 
-    {
-        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "sphere" });
-        ecs_set(renderer->world, ent, StaticMeshComponent, {
-            .mesh = renderer->meshes.sphere,
-            .material = smat_new_from_blueprint(&renderer->smat, renderer->materials.pbropaque),
-        });
-
-        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
-        glm_translate_x(matrix, -1.0f);
-
-        ecs_add(renderer->world, ent, WorldTransformComponent);
-        WorldTransformComponent *c = ecs_get_mut(
-            renderer->world,
-            ent,
-            WorldTransformComponent);
-        glm_mat4_copy(matrix, c->world);
-
-    }
-
-    {
-        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "cube" });
-        ecs_set(renderer->world, ent, StaticMeshComponent, {
-            .mesh = renderer->meshes.cube,
-            .material = smat_new_from_blueprint(&renderer->smat, renderer->materials.pbropaque),
-        });
-
-        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
-        vec3 rotation_vector = { 0.7, 1, 0.1 };
-        glm_normalize(rotation_vector);
-        glm_translate_y(matrix, 1.0f);
-        glm_rotate(matrix, glm_rad(45.0f), rotation_vector);
-
-        ecs_add(renderer->world, ent, WorldTransformComponent);
-        WorldTransformComponent *c = ecs_get_mut(
-            renderer->world,
-            ent,
-            WorldTransformComponent);
-        glm_mat4_copy(matrix, c->world);
-
-    }
-
-    {
-        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "cube 1" });
-        ecs_set(renderer->world, ent, StaticMeshComponent, {
-            .mesh = renderer->meshes.cube,
-            .material = smat_new_from_blueprint(&renderer->smat, renderer->materials.pbropaque),
-        });
-
-        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
-        vec3 rotation_vector = { 0.7, 1, 0.1 };
-        glm_normalize(rotation_vector);
-        glm_translate_y(matrix, -1.1f);
-        glm_rotate(matrix, glm_rad(-45.0f), rotation_vector);
-
-        ecs_add(renderer->world, ent, WorldTransformComponent);
-        WorldTransformComponent *c = ecs_get_mut(
-            renderer->world,
-            ent,
-            WorldTransformComponent);
-        glm_mat4_copy(matrix, c->world);
-
-    }
-    {
-        ecs_entity_t ent = ecs_entity(renderer->world, { .name = "cube 2" });
-        HandleOf(GPUMaterial) mat = smat_new_from_blueprint(
-            &renderer->smat,
-            renderer->materials.pbropaque);
-
-        USE_HANDLE(mat, GPUMaterial)->properties[0].sampler2d = renderer->images.white;
-        ecs_set(renderer->world, ent, StaticMeshComponent, {
-            .mesh = renderer->meshes.cube,
-            .material = mat,
-        });
-
-        mat4 matrix = GLM_MAT4_IDENTITY_INIT;
-        vec3 rotation_vector = { 0.7, 1, 0.1 };
-        glm_normalize(rotation_vector);
-        glm_translate_y(matrix, -1.1f);
-        glm_translate_x(matrix, -1);
-        glm_rotate(matrix, glm_rad(25.0f), rotation_vector);
-
-        ecs_add(renderer->world, ent, WorldTransformComponent);
-        WorldTransformComponent *c = ecs_get_mut(
-            renderer->world,
-            ent,
-            WorldTransformComponent);
-        glm_mat4_copy(matrix, c->world);
-
-    }
     return 0;
 }
 
@@ -1569,6 +1476,9 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             &color_image,
             &depth_image);
 
+        dynarray RenderObject *render_list = 0;
+        array_init(render_list, vd_memory_get_system_allocator());
+
         ecs_set(it->world, it->entities[i], WindowSurfaceComponent, {
             .swapchain = swapchain,
             .surface = surface,
@@ -1580,6 +1490,7 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
             .current_frame = 0,
             .color_image = color_image,
             .depth_image = depth_image,
+            .render_list = render_list,
         });
 
         VD_CALLBACK_SET(w[i].on_immediate_destroy, on_window_component_immediate_destroy, renderer);
@@ -1594,6 +1505,7 @@ void on_window_component_immediate_destroy(ecs_entity_t entity, void *usrdata)
         ecs_get(renderer->world, entity, WindowSurfaceComponent);
 
     vkDeviceWaitIdle(renderer->device);
+    array_deinit(ws->render_list);
 
     vkDestroyImageView(renderer->device, ws->color_image.view, 0);
     vkDestroyImageView(renderer->device, ws->depth_image.view, 0);
@@ -1781,8 +1693,9 @@ static void render_window_surface(
     glm_vec3_copy(sun_direction, scene_data.sun_direction);
     glm_normalize(scene_data.sun_direction);
 
-    for (int i = 0; i < array_len(renderer->render_object_list); ++i) {
-        HandleOf(GPUMaterial) material = renderer->render_object_list[i].material;
+    dynarray RenderObject *ro = ws->render_list;
+    for (int i = 0; i < array_len(ro); ++i) {
+        HandleOf(GPUMaterial) material = ro[i].material;
         GPUMaterial *materialptr = USE_HANDLE(material, GPUMaterial);
         HandleOf(GPUMaterialBlueprint) blueprint = materialptr->blueprint;
         GPUMaterialBlueprint *blueprintptr = USE_HANDLE(materialptr->blueprint, GPUMaterialBlueprint);
@@ -1809,15 +1722,15 @@ static void render_window_surface(
                 },
             });
 
-        VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(renderer->render_object_list[i].mesh, VD_R_GPUMesh);
+        VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(ro[i].mesh, VD_R_GPUMesh);
 
         vkCmdPushConstants(
             cmd,
             blueprintptr->layout,
             vd_shader_stage_to_vk_shader_stage(blueprintptr->push_constant_info.stage),
             0,
-            renderer->render_object_list[i].push_constant.info.size,
-            get_push_constant_ptr(&renderer->render_object_list[i].push_constant));
+            ro[i].push_constant.info.size,
+            get_push_constant_ptr(&ro[i].push_constant));
 
         vkCmdBindDescriptorSets(
             cmd,
@@ -1835,7 +1748,13 @@ static void render_window_surface(
 
         vkCmdBindIndexBuffer(cmd, mesh_to_draw->index.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        vkCmdDrawIndexed(cmd, mesh_to_draw->num_indices, 1, 0, 0, 0);
+        vkCmdDrawIndexed(
+            cmd,
+            ro[i].index_count,
+            1,
+            ro[i].first_index,
+            0,
+            0);
     }
     vkCmdEndRendering(cmd);
 
@@ -2177,12 +2096,10 @@ void vd_renderer_write_mesh(
     size_t vertex_size = svma_get_size(renderer->svma, mesh->vertex.allocation);
     size_t index_size = svma_get_size(renderer->svma, mesh->index.allocation);
 
-    if (bytes_vertices > vertex_size || bytes_indices > index_size) {
-        sgeo_resize(&renderer->geos, info->mesh, & (VD_R_MeshCreateInfo) {
-            .num_vertices = info->num_vertices,
-            .num_indices = info->num_indices,
-        });
-    }
+    sgeo_resize(&renderer->geos, info->mesh, & (VD_R_MeshCreateInfo) {
+        .num_vertices = info->num_vertices,
+        .num_indices = info->num_indices,
+    });
 
     mesh->num_indices = info->num_indices;
     mesh->num_vertices = info->num_vertices;
@@ -2229,14 +2146,17 @@ HandleOf(GPUMaterial) vd_renderer_create_material(
     return smat_new_from_blueprint(&renderer->smat, blueprint);
 }
 
-HandleOf(GPUMaterial) vd_renderer_get_default_material(VD_Renderer *renderer)
+HandleOf(GPUMaterialBlueprint) vd_renderer_get_default_material(VD_Renderer *renderer)
 {
     return renderer->materials.pbropaque;
 }
 
-void vd_renderer_push_render_object(VD_Renderer *renderer, RenderObject *render_object)
+void vd_renderer_push_render_object(
+    VD_Renderer *renderer,
+    WindowSurfaceComponent *ws,
+    RenderObject *render_object)
 {
-    array_add(renderer->render_object_list, *render_object);
+    array_add(ws->render_list, *render_object);
 }
 
 static void vd_shdc_log_error(const char *what, const char *msg, const char *extmsg)
@@ -2253,9 +2173,8 @@ void RendererRenderToWindowSurfaceComponents(ecs_iter_t *it)
 
     for (int i = 0; i < it->count; ++i) {
         render_window_surface(renderer, &ws[i]);
+        array_clear(ws[i].render_list);
     }
-
-    array_clear(renderer->render_object_list);
 }
 
 void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
@@ -2322,6 +2241,7 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
             .current_frame = 0,
             .color_image = color_image,
             .depth_image = depth_image,
+            .render_list = ws->render_list,
         });
     }
 }
@@ -2332,6 +2252,7 @@ void RendererGatherStaticMeshComponentSystem(ecs_iter_t *it)
     VD_Renderer *renderer = vd_instance_get_renderer(app->instance);
     StaticMeshComponent *static_mesh_components = ecs_field(it, StaticMeshComponent, 0);
     WorldTransformComponent *world_transforms = ecs_field(it, WorldTransformComponent, 1);
+    WindowSurfaceComponent *ws = ecs_field(it, WindowSurfaceComponent, 2);
 
     for (int i = 0; i < it->count; ++i) {
 
@@ -2353,8 +2274,22 @@ void RendererGatherStaticMeshComponentSystem(ecs_iter_t *it)
                 },
                 .def = pc,
             },
+            .first_index = 0,
+            .index_count = USE_HANDLE(static_mesh_components[i].mesh, VD_R_GPUMesh)->num_indices,
         };
 
-        vd_renderer_push_render_object(renderer, &ro);
+        vd_renderer_push_render_object(renderer, ws, &ro);
+    }
+}
+
+Handle vd_renderer_get_default_handle(VD_Renderer *renderer, VD(RendererDefaultHandleSlot) slot)
+{
+    switch (slot) {
+        case RENDERER_DEFAULT_TEXTURE_WHITE:        return renderer->images.white;
+        case RENDERER_DEFAULT_TEXTURE_ERROR:        return renderer->images.checker_magenta;
+        case RENDERER_DEFAULT_MESH_CUBE:            return renderer->meshes.cube;
+        case RENDERER_DEFAULT_MESH_SPHERE:          return renderer->meshes.sphere;
+        case RENDERER_DEFAULT_MATERIAL_PBROPAQUE:   return renderer->materials.pbropaque;
+        default:                                    return INVALID_HANDLE();
     }
 }

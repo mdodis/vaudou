@@ -37,6 +37,8 @@ VD_Renderer *vd_instance_get_renderer(VD_Instance *instance);
 VD_Log 		*vd_instance_get_log(VD_Instance *instance);
 VD_CVS 		*vd_instance_get_cvs(VD_Instance *instance);
 
+void vd(all_windows)(VD_Instance *instance, VD_ARRAY PtrTo(ecs_entity_t) *result);
+
 
 extern VD_Instance *Local_Instance;
 

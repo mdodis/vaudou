@@ -24,6 +24,10 @@ if (VD_OPTION_ENABLE_VULKAN_OBJECT_NAMES)
     target_compile_definitions(vdng PRIVATE VD_ENABLE_VULKAN_OBJECT_NAMES)
 endif()
 
+if (VD_OPTION_ENABLE_VMA_TRACKING)
+    target_compile_definitions(vdng PRIVATE VD_OPTION_ENABLE_VMA_TRACKING)
+endif()
+
 add_custom_command(
     OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vdng
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/inc ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/vdng

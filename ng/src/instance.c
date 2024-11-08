@@ -28,7 +28,8 @@ struct VD_Instance {
     VD_MM					*mm;
     VD_CVS                  *cvs;
     VD_Log					log;
-    int should_close;
+    int                     should_close;
+    ecs_query_t             *cached_window_query;
 };
 
 
@@ -100,7 +101,7 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
     ecs_singleton_set(instance->world, Application, { .instance = instance });
 
     TracyCZoneEnd(Initialize_Flecs);
-// ----RENDERER--------------------------------------------------------------------------------------
+// ----RENDERER-------------------------------------------------------------------------------------
     TracyCZoneN(Initialize_Renderer, "Initialize::Renderer", 1);
 
     instance->r = vd_renderer_create();
@@ -125,19 +126,20 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
         });
 
     TracyCZoneEnd(Initialize_All);
+
+// ----DEFAULT QUERIES------------------------------------------------------------------------------
+    instance->cached_window_query = ecs_query(instance->world, {
+        .terms = {
+            { ecs_id(WindowComponent) },
+        },
+        .cache_kind = EcsQueryCacheAuto,
+    });
+
+    ecs_progress(instance->world, 0.0f);
 }
 
 void vd_instance_main(VD_Instance *instance)
 {
-    ecs_progress(instance->world, 0.0f);
-    ecs_entity_t w = ecs_entity(instance->world, { .name = "Vaudou" });
-    ecs_add(instance->world, w, WindowComponent);
-
-    WindowComponent *window_component = (WindowComponent*)
-        ecs_get(instance->world, w, WindowComponent);
-    window_component->flags = WINDOW_FLAG_RESIZABLE;
-
-    ecs_modified(instance->world, w, WindowComponent);
 
     while (!instance->should_close) {
         ecs_progress(instance->world, 0.0f);
@@ -198,6 +200,19 @@ VD_Log *vd_instance_get_log(VD_Instance *instance)
 VD_CVS *vd_instance_get_cvs(VD_Instance *instance)
 {
     return instance->cvs;
+}
+
+void vd(all_windows)(VD_Instance *instance, VD_ARRAY PtrTo(ecs_entity_t) *result)
+{
+    ecs_iter_t it = ecs_query_iter(instance->world, instance->cached_window_query);
+
+    while (ecs_query_next(&it)) {
+        WindowComponent *w = ecs_field(&it, WindowComponent, 0);
+
+        for (int i = 0; i < it.count; ++i) {
+            array_add(*result, it.entities[i]);
+        }
+    }
 }
 
 static void vd_ecs_log(int32_t level, const char *file, int32_t line, const char *msg)

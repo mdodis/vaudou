@@ -31,6 +31,7 @@ int svma_init(SVMA *s, SVMAInitInfo *info)
     s->track = info->track;
 
     if (s->track) {
+        VD_LOG("SVMA", "Using VMA Tracking Mechanism");
         array_init(s->allocations, vd_memory_get_system_allocator());
     }
 

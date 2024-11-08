@@ -2200,6 +2200,7 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
 
         vkDestroyImageView(renderer->device, ws->color_image.view, 0);
         svma_free_texture(renderer->svma, ws->color_image.image, ws->color_image.allocation);
+        svma_free_texture(renderer->svma, ws->depth_image.image, ws->depth_image.allocation);
 
         for (int j = 0; j < array_len(ws->image_views); ++j) {
             vkDestroyImageView(renderer->device, ws->image_views[j], 0);

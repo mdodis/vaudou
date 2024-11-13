@@ -7,9 +7,9 @@
 #include "r/svma.h"
 
 typedef struct {
-    VD_HANDLEMAP VD_R_AllocatedImage    *image_handles;
-    VkDevice                            device;
-    SVMA                                *svma;
+    VD_HANDLEMAP Texture    *image_handles;
+    VkDevice                device;
+    SVMA                    *svma;
 } VD_R_TextureSystem;
 
 typedef struct {

@@ -17,7 +17,7 @@ const char *GUI_FRAG_SHADER_SOURCE =
 
 typedef struct {
     VD_Renderer *renderer;
-    HandleOf(VD_R_AllocatedImage) font_image;
+    HandleOf(Texture) font_image;
     HandleOf(VD_R_GPUMesh) mesh_data;
     HandleOf(GPUMaterialBlueprint) blueprint;
     HandleOf(GPUMaterial) material;
@@ -65,6 +65,9 @@ void VdImGuiImport(ecs_world_t *world)
             .name = "Collect Meshes System",
             .add = ecs_ids( ecs_dependson(EcsPreStore) ),
         }),
+        .query.terms = {
+            { .id = ecs_id(WindowSurfaceComponent), .inout = EcsIn },
+        },
         .callback = CollectMeshesSystem,
     });
 
@@ -85,7 +88,7 @@ void VdImGuiImport(ecs_world_t *world)
 
     vd_renderer_upload_texture_data(
         renderer,
-        USE_HANDLE(backend->font_image, VD_R_AllocatedImage),
+        USE_HANDLE(backend->font_image, Texture),
         font_data,
         width * height * sizeof(u32));
 
@@ -163,6 +166,7 @@ static void ImGuiUpdatePanelsSystem(ecs_iter_t *it)
 static void CollectMeshesSystem(ecs_iter_t *it)
 {
     DrawList draw_list = get_draw_list();
+    WindowSurfaceComponent *ws = ecs_field(it, WindowSurfaceComponent, 0);
 
     if (draw_list == 0) {
         return;
@@ -212,8 +216,43 @@ static void CollectMeshesSystem(ecs_iter_t *it)
         .indices = indices,
     });
     
-    for (size_t i = 0; i < draw_list_cmdlist_count(draw_list); ++i) {
-        CmdList cmd_list = draw_list_get_cmdlist(draw_list, i);
-    }
+    /*for (size_t i = 0; i < draw_list_cmdlist_count(draw_list); ++i) {*/
+    /*    CmdList cmd_list = draw_list_get_cmdlist(draw_list, i);*/
+    /**/
+    /*    size_t index_count_offset = 0;*/
+    /*    for (size_t j = 0; j < cmd_list_buf_count(cmd_list); ++j) {*/
+    /*        CmdBuffer cmd_buffer = cmd_list_buf(cmd_list, j);*/
+    /**/
+    /*        unsigned int index_count = cmd_buffer_idx_count(cmd_buffer);*/
+    /*        unsigned int index_offset = cmd_buffer_idx_offset(cmd_buffer);*/
+    /**/
+    /*        vec4 clip;*/
+    /*        cmd_buffer_clip(cmd_buffer, clip);*/
+    /**/
+    /*        GuiPushConstant *gui_push_constant = VD_MM_FRAME_ALLOC_STRUCT(GuiPushConstant);*/
+    /*        gui_push_constant->vertex_buffer = USE_HANDLE(*/
+    /*            backend->mesh_data,*/
+    /*            VD_R_GPUMesh)->vertex_buffer_address;*/
+    /**/
+    /*        vd_renderer_push_render_object(*/
+    /*            renderer,*/
+    /*            ws,*/
+    /*            & (RenderObject)*/
+    /*            {*/
+    /*                .mesh = backend->mesh_data,*/
+    /*                .material = backend->material,*/
+    /*                .first_index = index_offset,*/
+    /*                .index_count = index_count,*/
+    /*                .push_constant.info = {*/
+    /*                    .size = sizeof(GuiPushConstant),*/
+    /*                    .type = PUSH_CONSTANT_TYPE_CUSTOM,*/
+    /*                    .stage = SHADER_STAGE_VERT_BIT,*/
+    /*                },*/
+    /*                .push_constant.ptr = gui_push_constant,*/
+    /*            });*/
+    /**/
+    /*    }*/
+    /*    index_count_offset += cmd_list_indx_count(cmd_list);*/
+    /*}*/
 
 }

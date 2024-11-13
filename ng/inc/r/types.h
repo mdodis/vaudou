@@ -15,6 +15,8 @@ enum {
     VD_MAX_SHADERS_PER_MATERIAL = 2,
     VD_MAX_BINDINGS_PER_SHADER  = 4,
     VD_(MAX_MATERIAL_PROPERTIES) = 8,
+    VD_(MAX_SINKS) = 6,
+    VD_(MAX_SOURCES) = 6,
     VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL = 3,
     VD_PASS_OPAQUE = 1000,
     VD_PASS_TRANSPARENT = 2000,
@@ -27,6 +29,30 @@ typedef enum {
     VD_(SHADER_STAGE_FRAG_BIT) = 1 << 1,
     VD_(SHADER_STAGE_COMP_BIT) = 1 << 1,
 } VD(ShaderStage);
+
+typedef enum {
+    VD_(SIZE_CLASS_UNDEFINED) = 0,
+    VD_(SIZE_CLASS_SWAPCHAIN_RELATIVE),
+    VD_(SIZE_CLASS_CUSTOM),
+} VD(SizeClass);
+
+typedef enum {
+    VD_(FORMAT_UNDEFINED) = 0,
+    VD_(FORMAT_R8G8B8A8_UNORM),
+    VD_(FORMAT_R16G16B16A16_SFLOAT),
+    VD_(FORMAT_B8G8R8A8_UNORM),
+    VD_(FORMAT_D32_SFLOAT),
+} VD(Format);
+
+static VD_INLINE int format_is_depth_format(VD(Format) format)
+{
+    switch (format) {
+        case VD_(FORMAT_D32_SFLOAT):
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 typedef struct {
     uintptr_t opaq;
@@ -43,12 +69,12 @@ typedef struct {
     VD(Allocation)  allocation;
     VkExtent3D      extent;
     VkFormat        format;
-} VD_R_AllocatedImage; 
+} VD(Texture); 
 
 typedef struct {
     VkBuffer            buffer;
     VD(Allocation)      allocation;
-} VD_R_AllocatedBuffer;
+} VD(Buffer);
 
 typedef struct {
     vec3    position;
@@ -59,11 +85,11 @@ typedef struct {
 } VD_R_Vertex;
 
 typedef struct {
-    VD_R_AllocatedBuffer    vertex;
-    VD_R_AllocatedBuffer    index;
-    VkDeviceAddress         vertex_buffer_address;
-    size_t num_vertices;
-    size_t num_indices;
+    VD(Buffer)          vertex;
+    VD(Buffer)          index;
+    VkDeviceAddress     vertex_buffer_address;
+    size_t              num_vertices;
+    size_t              num_indices;
 } VD_R_GPUMesh;
 
 typedef struct {
@@ -205,7 +231,7 @@ typedef struct {
 typedef struct {
     HandleOf(VD(GPUMaterialBlueprint))  blueprint;
     u32                                 num_buffers;
-    VD_R_AllocatedBuffer                buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
+    VD(Buffer)                          buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
     VD(MaterialProperty)                properties[VD_(MAX_MATERIAL_PROPERTIES)];
 } VD(GPUMaterial);
 
@@ -228,8 +254,151 @@ typedef struct {
     VD(PushConstant)        push_constant;
     u32                     index_count;
     u32                     first_index;
+    struct {
+        int                 use_custom;
+        vec4                custom;
+    } scissor;
 } VD(RenderObject);
 
+// ----COMMANDS-------------------------------------------------------------------------------------
+
+typedef enum {
+    VD_(COMMAND_UNKNOWN) = 0,
+    VD_(COMMAND_CLEAR_COLOR),
+    VD_(COMMAND_BEGIN_RENDERING),
+    VD_(COMMAND_END_RENDERING),
+    VD_(COMMAND_SET_VIEWPORT),
+    VD_(COMMAND_SET_SCISSOR),
+    VD_(COMMAND_COPY_BUFFER),
+    VD_(COMMAND_COPY_BUFFER_TO_TEXTURE),
+    VD_(COMMAND_WRITE_PUSH_CONSTANT),
+} VD(CommandType);
+
+typedef enum {
+    VD_(LOAD_OP_DONT_CARE),
+    VD_(LOAD_OP_CLEAR),
+    VD_(LOAD_OP_LOAD),
+} VD(LoadOp);
+
+typedef enum {
+    VD_(STORE_OP_DONT_CARE),
+    VD_(STORE_OP_STORE),
+} VD(StoreOp);
+
+typedef struct {
+    Texture     *target;
+    VD(LoadOp)  load_op;
+    VD(StoreOp) store_op;
+} VD(RenderingAttachmentInfo);
+
+typedef struct {
+    VD(CommandType) type;
+
+    union {
+        struct {
+            Texture *texture;
+            vec4    value;
+        } clear_color;
+
+        struct {
+            vec4    area;
+            VD(RenderingAttachmentInfo) color_attachment;
+            VD(RenderingAttachmentInfo) depth_attachment;
+        } begin_rendering;
+
+        struct {
+            float x;
+            float y;
+            float w;
+            float h;
+            float mind;
+            float maxd;
+        } set_viewport;
+
+        struct {
+            float x;
+            float y;
+            float w;
+            float h;
+        } set_scissor;
+
+        struct {
+            Buffer *src;
+            size_t src_offset;
+            Buffer *dst;
+            size_t dst_offset;
+            size_t size;
+        } copy_buffer;
+
+        struct {
+            Buffer  *src;
+            size_t  src_offset;
+            size_t  src_row_length;
+            Texture *tex;
+            size_t  tex_height;
+            ivec3   tex_extent;
+        } copy_buffer_to_texture;
+
+        struct {
+            VkPipelineLayout    layout;
+            VD(ShaderStage)     stage;
+            size_t              size;
+            void                *data;
+        } write_push_constant;
+    };
+} VD(Command);
+
+// ----RENDER PASSES--------------------------------------------------------------------------------
+
+typedef void *VD(FrameData);
+
+typedef struct {
+    VD(SizeClass)   klass;
+    union {
+        vec2        relative;
+        ivec2       absolute;
+    };
+} VD(Size);
+
+typedef struct {
+    VD(Format)      format;
+    VD(Size)        size;
+} VD(AttachmentInfo);
+
+typedef enum {
+    VD_(ORIGIN_FROM_SINK),
+    VD_(ORIGIN_INTERNAL),
+} VD(Origin);
+
+typedef struct {
+    const char          *name;
+    VD(AttachmentInfo)  attachment_info;
+    VD(Origin)          origin;
+
+    HandleOf(VD_R_AllocatedImage) runtime_image;
+} VD(Source);
+
+typedef struct {
+    const char          *name;
+    VD(AttachmentInfo)  attachment_info;
+    VD(Source)          *binding;
+} VD(Sink);
+
+typedef struct VD(Pass) VD(Pass);
+
+struct VD(Pass) {
+    const char     *name;
+
+    u32            num_sinks;
+    VD(Sink)       sinks[VD_(MAX_SINKS)];
+
+    u32            num_sources;
+    VD(Source)     sources[VD_(MAX_SOURCES)];
+
+    int (*init)(VD(Pass) *self);
+    int (*run)(VD(Pass) *self, VD(FrameData) frame_data);
+    int (*deinit)(VD(Pass) *self);
+};
 
 void vd_r_generate_sphere_data(
     VD_R_Vertex **vertices,

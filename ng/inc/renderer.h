@@ -55,8 +55,8 @@ struct WindowSurfaceComponent {
     VkExtent2D                      extent;
     VD_ARRAY VD_RendererFrameData   *frame_data;
     int                             current_frame;
-    VD_R_AllocatedImage             color_image;
-    VD_R_AllocatedImage             depth_image;
+    VD(Texture)                     color_image;
+    VD(Texture)                     depth_image;
     VD_ARRAY VD(RenderObject)       *render_list;
 };
 
@@ -67,21 +67,21 @@ int vd_renderer_deinit(VD_Renderer *renderer);
 VkCommandBuffer vd_renderer_imm_begin(VD_Renderer *renderer);
 void vd_renderer_imm_end(VD_Renderer *renderer);
 
-VD_R_AllocatedBuffer vd_renderer_create_buffer(
+VD(Buffer) vd_renderer_create_buffer(
     VD_Renderer *renderer,
     size_t size,
     VkBufferUsageFlags flags,
     VmaMemoryUsage usage);
-void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
+void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD(Buffer) *buffer);
 
-void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
-void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer);
+void *vd_renderer_map_buffer(VD_Renderer *renderer, VD(Buffer) *buffer);
+void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD(Buffer) *buffer);
 
 VkDevice vd_renderer_get_device(VD_Renderer *renderer);
 
 Handle vd_renderer_get_default_handle(VD_Renderer *renderer, VD(RendererDefaultHandleSlot) slot);
 
-HandleOf(VD_R_AllocatedImage) vd_renderer_create_texture(
+HandleOf(VD(Texture)) vd_renderer_create_texture(
     VD_Renderer *renderer,
     VD_R_TextureCreateInfo *info);
 
@@ -114,13 +114,13 @@ void vd_renderer_push_render_object(
 
 void vd_renderer_upload_texture_data(
     VD_Renderer *renderer,
-    VD_R_AllocatedImage *image,
+    VD(Texture) *image,
     void *data,
     size_t size);
 
 void vd_renderer_destroy_texture(
     VD_Renderer *renderer,
-    VD_R_AllocatedImage *image);
+    VD(Texture) *image);
 
 // ----OBSERVERS------------------------------------------------------------------------------------
 extern void RendererOnWindowComponentSet(ecs_iter_t *it);

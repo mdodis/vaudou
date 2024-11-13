@@ -284,7 +284,7 @@ static VkDescriptorSet write_set(
     SMat *s,
     int n,
     u32 num_buffers,
-    VD_R_AllocatedBuffer *buffers,
+    VD(Buffer) *buffers,
     VkDescriptorSetLayout set_layout,
     MaterialWriteInfo *info)
 {
@@ -317,7 +317,7 @@ static VkDescriptorSet write_set(
 
         switch (p->binding.type) {
             case BINDING_TYPE_STRUCT: {
-                VD_R_AllocatedBuffer *buffer = &buffers[buffer_index++];
+                VD(Buffer) *buffer = &buffers[buffer_index++];
                 void *data = svma_map(s->svma, buffer->allocation);
                 memcpy(data, p->pstruct, p->binding.struct_size);
 
@@ -331,7 +331,7 @@ static VkDescriptorSet write_set(
                 writes[i].pBufferInfo = binfo;
             } break;
             case BINDING_TYPE_SAMPLER2D: {
-                VD_R_AllocatedImage *img = USE_HANDLE(p->sampler2d, VD_R_AllocatedImage);
+                Texture *img = USE_HANDLE(p->sampler2d, Texture);
                 VkDescriptorImageInfo *iinfo = array_addp(image_infos);
                 iinfo->imageView = img->view;
                 iinfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

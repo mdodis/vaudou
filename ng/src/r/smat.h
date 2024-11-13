@@ -11,7 +11,7 @@ typedef struct {
     SVMA                     *svma;
     VkDescriptorSetLayout    set0_layout;
     VD_DescriptorAllocator   *desc_allocator;
-    VD_R_AllocatedBuffer     set0_buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
+    VD(Buffer)               set0_buffers[VD_MAX_UNIFORM_BUFFERS_PER_MATERIAL];
     u32                      num_set0_buffers;
     struct {
         VkSampler linear;

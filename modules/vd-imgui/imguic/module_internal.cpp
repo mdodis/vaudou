@@ -115,6 +115,36 @@ void cmd_list_vert_col(CmdList list, unsigned int i, float *col)
     memcpy(col, &((ImDrawList*)list)->VtxBuffer[i].col, sizeof(float) * 4);
 }
 
+unsigned int cmd_list_buf_count(CmdList list)
+{
+    return ((ImDrawList*)list)->CmdBuffer.size();
+}
+
+CmdBuffer cmd_list_buf(CmdList list, unsigned int i)
+{
+    return &((ImDrawList*)list)->CmdBuffer[i];
+}
+
+unsigned int cmd_buffer_vtx_offset(CmdBuffer buf)
+{
+    return ((ImDrawCmd*)buf)->VtxOffset;
+}
+
+unsigned int cmd_buffer_idx_offset(CmdBuffer buf)
+{
+    return ((ImDrawCmd*)buf)->IdxOffset;
+}
+
+unsigned int cmd_buffer_idx_count(CmdBuffer buf)
+{
+    return ((ImDrawCmd*)buf)->ElemCount;
+}
+
+void cmd_buffer_clip(CmdBuffer buf, float *clip4)
+{
+    memcpy(clip4, &((ImDrawCmd*)buf)->ClipRect, sizeof(float) * 4);
+}
+
 void imgui_text(const char *text)
 {
     ImGui::Text("%s", text);

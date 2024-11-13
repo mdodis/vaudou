@@ -37,7 +37,7 @@ void vd_deletion_queue_push_vkimage(VD_DeletionQueue *dq, VkImage image)
     array_add(dq->images, image);
 }
 
-void vd_deletion_queue_push_image(VD_DeletionQueue *dq, VD_R_AllocatedImage image)
+void vd_deletion_queue_push_image(VD_DeletionQueue *dq, Texture image)
 {
     array_add(dq->allocated_images, image);
 }
@@ -47,7 +47,7 @@ void vd_deletion_queue_push_gpumesh(VD_DeletionQueue *dq, VD_R_GPUMesh *mesh)
     array_add(dq->meshes, *mesh);
 }
 
-void vd_deletion_queue_push_buffer(VD_DeletionQueue *dq, VD_R_AllocatedBuffer *buffer)
+void vd_deletion_queue_push_buffer(VD_DeletionQueue *dq, VD(Buffer) *buffer)
 {
     array_add(dq->buffers, *buffer);
 }

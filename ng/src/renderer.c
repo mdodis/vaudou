@@ -89,9 +89,9 @@ struct VD_Renderer {
 
     struct {
         
-        HandleOf(VD_R_AllocatedImage) black;
-        HandleOf(VD_R_AllocatedImage) white;
-        HandleOf(VD_R_AllocatedImage) checker_magenta;
+        HandleOf(Texture) black;
+        HandleOf(Texture) white;
+        HandleOf(Texture) checker_magenta;
     } images;
 
     struct {
@@ -854,7 +854,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         vd_renderer_upload_texture_data(
             renderer,
-            USE_HANDLE(renderer->images.white, VD_R_AllocatedImage),
+            USE_HANDLE(renderer->images.white, Texture),
             &white,
             sizeof(white));
 
@@ -872,7 +872,7 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         vd_renderer_upload_texture_data(
             renderer,
-            USE_HANDLE(renderer->images.black, VD_R_AllocatedImage),
+            USE_HANDLE(renderer->images.black, Texture),
             &black,
             sizeof(black));
 
@@ -899,11 +899,85 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
 
         vd_renderer_upload_texture_data(
             renderer,
-            USE_HANDLE(renderer->images.checker_magenta, VD_R_AllocatedImage),
+            USE_HANDLE(renderer->images.checker_magenta, Texture),
             checkers,
             checkers_size);
 
     }
+
+// ----DEFAULT PASSES-------------------------------------------------------------------------------
+    {
+        Pass clear = {
+            .name = "default.clear-color-depth",
+            .sinks = {
+                (Sink)
+                {
+                    .name = "k-color",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_R16G16B16A16_SFLOAT,
+                },
+                (Sink)
+                {
+                    .name = "k-depth",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_D32_SFLOAT,
+                },
+            },
+            .sources = {
+                (Source)
+                {
+                    .name = "s-color",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_R16G16B16A16_SFLOAT,
+                    .origin = ORIGIN_FROM_SINK,
+                },
+                (Source)
+                {
+                    .name = "s-depth",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_D32_SFLOAT,
+                    .origin = ORIGIN_FROM_SINK,
+                },
+            },
+        };
+
+        Pass opaque = {
+            .name = "default.opaque",
+            .sinks = {
+                (Sink)
+                {
+                    .name = "k-color",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_R16G16B16A16_SFLOAT,
+                },
+                (Sink)
+                {
+                    .name = "k-depth",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_D32_SFLOAT,
+                },
+            },
+            .sources = {
+                (Source)
+                {
+                    .name = "s-color",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_R16G16B16A16_SFLOAT,
+                    .origin = ORIGIN_FROM_SINK,
+                },
+                (Source)
+                {
+                    .name = "s-depth",
+                    .attachment_info.size.klass = SIZE_CLASS_SWAPCHAIN_RELATIVE,
+                    .attachment_info.format = FORMAT_D32_SFLOAT,
+                    .origin = ORIGIN_FROM_SINK,
+                },
+            },
+        };
+
+        HandleOf(Pass) opaque_pass;
+    }
+
 
 // ----DEFAULT PIPELINES----------------------------------------------------------------------------
     {
@@ -1078,8 +1152,8 @@ static void create_swapchain_image_views_and_framebuffers(
     dynarray VkImage                **out_images,
     dynarray VkImageView            **out_image_views,
     dynarray VD_RendererFrameData   **out_frame_data,
-    VD_R_AllocatedImage             *out_color_image,
-    VD_R_AllocatedImage             *out_depth_image)
+    Texture                         *out_color_image,
+    Texture                         *out_depth_image)
 {
     u32                 image_count;
     VkSurfaceFormatKHR  best_surface_format = {VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_MAX_ENUM_KHR };
@@ -1460,8 +1534,8 @@ void RendererOnWindowComponentSet(ecs_iter_t *it)
         dynarray VkImage                *images;
         dynarray VkImageView            *image_views;
         dynarray VD_RendererFrameData   *frame_data = 0;
-        VD_R_AllocatedImage             color_image;
-        VD_R_AllocatedImage             depth_image;
+        Texture                         color_image;
+        Texture                         depth_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],
@@ -1661,15 +1735,6 @@ static void render_window_surface(
             .maxDepth = 1.0f
         });
 
-    vkCmdSetScissor(
-        cmd,
-        0,
-        1,
-        & (VkRect2D)
-        {
-            .offset = { 0, 0 },
-            .extent = ws->extent,
-        });
 
     float aspect_ratio = (float)ws->extent.width / (float)ws->extent.height;
     mat4 projmatrix;
@@ -1723,6 +1788,28 @@ static void render_window_surface(
             });
 
         VD_R_GPUMesh *mesh_to_draw = USE_HANDLE(ro[i].mesh, VD_R_GPUMesh);
+
+        if (ro[i].scissor.use_custom) {
+            vkCmdSetScissor(
+                cmd,
+                0,
+                1,
+                & (VkRect2D)
+                {
+                    .offset = { ro[i].scissor.custom[0], ro[i].scissor.custom[1] },
+                    .extent = { ro[i].scissor.custom[2], ro[i].scissor.custom[3] },
+                });
+        } else {
+            vkCmdSetScissor(
+                cmd,
+                0,
+                1,
+                & (VkRect2D)
+                {
+                    .offset = { 0, 0 },
+                    .extent = ws->extent,
+                });
+        }
 
         vkCmdPushConstants(
             cmd,
@@ -1831,13 +1918,13 @@ static void render_window_surface(
 
 }
 
-VD_R_AllocatedBuffer vd_renderer_create_buffer(
+VD(Buffer) vd_renderer_create_buffer(
     VD_Renderer *renderer,
     size_t size,
     VkBufferUsageFlags flags,
     VmaMemoryUsage usage)
 {
-    VD_R_AllocatedBuffer result;
+    VD(Buffer) result;
 
     svma_create_buffer(
         renderer->svma,
@@ -1859,12 +1946,12 @@ VD_R_AllocatedBuffer vd_renderer_create_buffer(
     return result;
 }
 
-void *vd_renderer_map_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+void *vd_renderer_map_buffer(VD_Renderer *renderer, VD(Buffer) *buffer)
 {
     return svma_map(renderer->svma, buffer->allocation);
 }
 
-void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+void vd_renderer_unmap_buffer(VD_Renderer *renderer, VD(Buffer) *buffer)
 {
     svma_unmap(renderer->svma, buffer->allocation);
 }
@@ -1874,7 +1961,7 @@ VkDevice vd_renderer_get_device(VD_Renderer *renderer)
     return renderer->device;
 }
 
-void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD_R_AllocatedBuffer *buffer)
+void vd_renderer_destroy_buffer(VD_Renderer *renderer, VD(Buffer) *buffer)
 {
     svma_free_buffer(renderer->svma, buffer->buffer, buffer->allocation);
 }
@@ -1888,7 +1975,7 @@ VD_Handle vd_renderer_create_texture(
 
 void vd_renderer_upload_texture_data(
     VD_Renderer *renderer,
-    VD_R_AllocatedImage *image,
+    Texture *image,
     void *data,
     size_t size)
 {
@@ -1899,7 +1986,7 @@ void vd_renderer_upload_texture_data(
         VD_LOG("Renderer", "vd_renderer_upload_texture_data(): size != data_size!");
     }
 
-    VD_R_AllocatedBuffer staging = vd_renderer_create_buffer(
+    VD(Buffer) staging = vd_renderer_create_buffer(
         renderer,
         data_size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1951,7 +2038,7 @@ void vd_renderer_upload_texture_data(
 
 void vd_renderer_destroy_texture(
     VD_Renderer *renderer,
-    VD_R_AllocatedImage *image)
+    Texture *image)
 {
     vkDestroyImageView(renderer->device, image->view, 0);
     svma_free_texture(renderer->svma, image->image, image->allocation);
@@ -1993,7 +2080,7 @@ VD_R_GPUMesh vd_renderer_upload_mesh(
         });
 
 
-    VD_R_AllocatedBuffer staging_buffer = vd_renderer_create_buffer(
+    VD(Buffer) staging_buffer = vd_renderer_create_buffer(
         renderer,
         bytes_indices + bytes_vertices,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -2082,7 +2169,7 @@ void vd_renderer_write_mesh(
 
     VD_R_GPUMesh *mesh = USE_HANDLE(info->mesh, VD_R_GPUMesh);
 
-    VD_R_AllocatedBuffer staging_buffer = vd_renderer_create_buffer(
+    VD(Buffer) staging_buffer = vd_renderer_create_buffer(
         renderer,
         bytes_indices + bytes_vertices,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -2215,8 +2302,8 @@ void RendererCheckWindowComponentSizeChange(ecs_iter_t *it)
         dynarray VkImage                *images;
         dynarray VkImageView            *image_views;
         dynarray VD_RendererFrameData   *frame_data = ws->frame_data;
-        VD_R_AllocatedImage             color_image;
-        VD_R_AllocatedImage             depth_image;
+        Texture                         color_image;
+        Texture                         depth_image;
         create_swapchain_image_views_and_framebuffers(
             ecs_get_name(it->world, it->entities[i]),
             it->entities[i],

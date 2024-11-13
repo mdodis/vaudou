@@ -14,6 +14,7 @@ typedef struct {
 
 typedef void *DrawList;
 typedef void *CmdList;
+typedef void *CmdBuffer;
 
 void init_imgui(InitInfo *info);
 
@@ -45,6 +46,15 @@ unsigned int cmd_list_vert_count(CmdList list);
 void cmd_list_vert_pos(CmdList list, unsigned int i, float *pos);
 void cmd_list_vert_tex(CmdList list, unsigned int i, float *tex);
 void cmd_list_vert_col(CmdList list, unsigned int i, float *col);
+
+unsigned int cmd_list_buf_count(CmdList list);
+CmdBuffer cmd_list_buf(CmdList list, unsigned int i);
+
+unsigned int cmd_buffer_vtx_offset(CmdBuffer buf);
+unsigned int cmd_buffer_idx_offset(CmdBuffer buf);
+unsigned int cmd_buffer_idx_count(CmdBuffer buf);
+
+void cmd_buffer_clip(CmdBuffer buf, float *clip4);
 
 void imgui_text(const char *text);
 

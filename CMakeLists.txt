@@ -39,6 +39,7 @@ set(VD_SCRIPTS_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts)
 
 add_subdirectory("lib")
 add_subdirectory("shdc")
+add_subdirectory("rhi")
 add_subdirectory("ng")
 
 add_subdirectory("modules")

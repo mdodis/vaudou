@@ -11,8 +11,11 @@ target_include_directories(vdng
     PRIVATE src .)
 
 target_link_libraries(vdng
+    INTERFACE vdrhi
     PUBLIC vdlib flecs amd_vma 
     PRIVATE vdshdc volk glslang TracyClient)
+
+target_link_libraries(vdng PRIVATE vdrhi-vulkan)
 
 target_compile_definitions(vdng PRIVATE VK_NO_PROTOTYPES)
 

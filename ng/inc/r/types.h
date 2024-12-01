@@ -271,7 +271,11 @@ typedef enum {
     VD_(COMMAND_SET_SCISSOR),
     VD_(COMMAND_COPY_BUFFER),
     VD_(COMMAND_COPY_BUFFER_TO_TEXTURE),
+    VD_(COMMAND_BIND_BLUEPRINT),
     VD_(COMMAND_WRITE_PUSH_CONSTANT),
+    VD_(COMMAND_BIND_PROPERTIES),
+    VD_(COMMAND_BIND_MESH),
+    VD_(COMMAND_DRAW_INDEXED),
 } VD(CommandType);
 
 typedef enum {
@@ -340,17 +344,38 @@ typedef struct {
         } copy_buffer_to_texture;
 
         struct {
-            VkPipelineLayout    layout;
+            HandleOf(GPUMaterialBlueprint) blueprint;
+        } bind_blueprint;
+
+        struct {
             VD(ShaderStage)     stage;
             size_t              size;
             void                *data;
         } write_push_constant;
+
+        struct {
+            HandleOf(GPUMaterial) material;
+        } bind_properties;
+
+        struct {
+            HandleOf(VD_R_GPUMesh) mesh;
+        } bind_mesh;
+
+        struct {
+            u32 index_count;
+            u32 instance_count;
+            u32 first_index;
+            u32 vertex_offset;
+            u32 first_instance;
+        } draw_indexed;
     };
 } VD(Command);
 
 // ----RENDER PASSES--------------------------------------------------------------------------------
 
-typedef void *VD(FrameData);
+typedef struct {
+    void *opaque_ptr;
+} VD(FrameData);
 
 typedef struct {
     VD(SizeClass)   klass;
@@ -375,7 +400,7 @@ typedef struct {
     VD(AttachmentInfo)  attachment_info;
     VD(Origin)          origin;
 
-    HandleOf(VD_R_AllocatedImage) runtime_image;
+    HandleOf(Texture) runtime_image;
 } VD(Source);
 
 typedef struct {
@@ -396,7 +421,7 @@ struct VD(Pass) {
     VD(Source)     sources[VD_(MAX_SOURCES)];
 
     int (*init)(VD(Pass) *self);
-    int (*run)(VD(Pass) *self, VD(FrameData) frame_data);
+    int (*run)(VD(Pass) *self, VD(FrameData) *frame_data);
     int (*deinit)(VD(Pass) *self);
 };
 

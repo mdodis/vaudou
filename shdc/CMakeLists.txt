@@ -6,6 +6,6 @@ target_link_libraries(vdshdc
     PRIVATE volk amd_vma glslang glslang-default-resource-limits)
 
 
-target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang-15.0.0/glslang/Include)
-target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang-15.0.0/glslang/Public)
+target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang/glslang/Include)
+target_include_directories(vdshdc PRIVATE ${PROJECT_SOURCE_DIR}/ext/glslang/glslang/Public)
 target_include_directories(vdshdc PUBLIC "./")

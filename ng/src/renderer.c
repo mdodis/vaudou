@@ -336,6 +336,8 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
     u32 best_device_graphics_queue_family = 0;
     u32 best_device_present_queue_family = 0;
     int best_device_is_gpu = 0;
+    int min_major_version = 1;
+    int min_minor_version = 3;
 
     for (int i = 0; i < array_len(physical_devices); ++i) {
         int q_device                                = i;
@@ -528,7 +530,9 @@ int vd_renderer_init(VD_Renderer *renderer, VD_RendererInitInfo *info)
             features12.bufferDeviceAddress &&
             features12.descriptorIndexing &&
             features13.synchronization2 &&
-            features13.dynamicRendering;
+            features13.dynamicRendering &&
+            VK_VERSION_MAJOR(props.properties.apiVersion) >= min_major_version &&
+            VK_VERSION_MINOR(props.properties.apiVersion) >= min_minor_version;
 
         if (best_device == -1)
         {

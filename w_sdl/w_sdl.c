@@ -41,13 +41,13 @@ static int Sdl_Initialized = 0;
 static void ensure_sdl_initialized()
 {
     if (!Sdl_Initialized) {
-        assert(SDL_Init(SDL_INIT_VIDEO) == SDL_TRUE);
+        assert(SDL_Init(SDL_INIT_VIDEO));
         SDL_SetLogOutputFunction(sdl_log, 0);
 #if VD_PLATFORM_MACOS
         const char *vulkan_library = find_vulkan_library();
         assert(SDL_Vulkan_LoadLibrary(vulkan_library) == SDL_TRUE);
 #else
-        assert(SDL_Vulkan_LoadLibrary(0) == SDL_TRUE);
+        assert(SDL_Vulkan_LoadLibrary(0));
 #endif
         Sdl_Initialized = 1;
     }
@@ -56,7 +56,7 @@ static void ensure_sdl_initialized()
 static VD_WINDOW_CREATE_SURFACE_PROC(sdl_create_surface_proc) {
     ensure_sdl_initialized();
     VkSurfaceKHR surface;
-    if (SDL_Vulkan_CreateSurface((SDL_Window *)window->window_ptr, instance, 0, &surface) != SDL_TRUE)
+    if (!SDL_Vulkan_CreateSurface((SDL_Window *)window->window_ptr, instance, 0, &surface))
     {
         const char *error = SDL_GetError();
         printf("SDL Error: %s\n", error);
@@ -69,7 +69,7 @@ VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(
     vd_w_sdl_get_physical_device_presentation_support_proc)
 {
     ensure_sdl_initialized();
-    SDL_bool result = SDL_Vulkan_GetPresentationSupport(
+    bool result = SDL_Vulkan_GetPresentationSupport(
         *((VkInstance *)vk_instance),
         *((VkPhysicalDevice *)vk_physical_device),
         queue_family_index);
@@ -82,7 +82,7 @@ VD_GET_PHYSICAL_DEVICE_PRESENTATION_SUPPORT_PROC(
         }
     }
 
-    return result == SDL_TRUE;
+    return result;
 }
 
 static void OnAddWindowComponent(ecs_iter_t *it)

@@ -219,6 +219,8 @@ VD_INLINE umm vd_free(VD_Allocator *allocator, umm ptr, size_t size)
     return allocator->proc_alloc(ptr, size, 0, allocator->c);
 }
 
+#define VD_ALLOC_ARRAY(alc, s, n) ((s*)vd_malloc(alc, sizeof(s) * n))
+
 /* ----COLORS------------------------------------------------------------------------------------ */
 
 VD_INLINE u32 vd_pack_unorm_r8g8b8a8(float v[4])

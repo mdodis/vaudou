@@ -67,24 +67,32 @@ typedef VD_RHI_IS_PHYSICAL_DEVICE_SUITABLE(VD(RHIsPhysicalDeviceSuitableProc));
         void *c)
 typedef VD_RHI_CREATE_SURFACE(VD(RHCreateSurfaceProc));
 
-
 /**
- * initialize
+ * init
  */
 typedef struct {
     VD(RHIsPhysicalDeviceSuitableProc) *is_physical_device_suitable;
     VD(RHCreateSurfaceProc)            *create_surface;
     void                               *c;
 
+    VD_Allocator                       *frame_allocator;
+
     struct {
         int                            debug;
+
+        union {
+            struct {
+                u32                    num_instance_extensions;
+                const char             **instance_extensions;
+            } vulkan;
+        } api_specific;
     } extensions;
 } VD(RHInitInfo);
 #define VD_RHI_INIT_PROC(name) VD(RHResult) name(VD(RHI) *rhi, VD(RHInitInfo) *info)
 typedef VD_RHI_INIT_PROC(VD(RHInitProc));
 
 /**
- *  deinitialize
+ *  deinit
  */
 typedef struct {
     /** Try to deinit quickly, without taking care to correctly free resources. */
@@ -158,6 +166,7 @@ struct VD(RHI) {
     VD(RHUnmapProc)         *unmap;
     VD(RHGetSizeProc)       *get_size;
     VD(RHCreateSurfaceProc) *create_presentation_surface;
+    void                    *c;
 };
 
 #endif // !VD_RHI_H

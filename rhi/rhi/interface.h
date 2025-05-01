@@ -53,7 +53,7 @@ typedef enum {
 #define VD_RHI_IS_PHYSICAL_DEVICE_SUITABLE(name) \
     VD(RHResult) name( \
         VD(RHI) *rhi, \
-        VD(RHPhysicalDevice) physical_device, \
+        void *physical_device, \
         int *out_is_suitable, \
         void *c)
 
@@ -79,6 +79,7 @@ typedef struct {
 
     struct {
         int                            debug;
+        int                            headless;
 
         union {
             struct {

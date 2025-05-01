@@ -22,3 +22,4 @@ add_custom_target(vdrhi_public_headers ALL DEPENDS ${CMAKE_RUNTIME_OUTPUT_DIRECT
 add_dependencies(vdrhi vdrhi_public_headers)
 
 add_subdirectory("vulkan")
+add_subdirectory("test")

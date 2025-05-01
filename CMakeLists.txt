@@ -37,6 +37,33 @@ add_subdirectory("ext")
 
 set(VD_SCRIPTS_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts)
 
+function(define_test_executable target_name sources_pattern linked_libraries)
+    # Collect source files
+    file(GLOB_RECURSE SOURCES "${sources_pattern}")
+
+    # Create the test executable
+    add_executable(${target_name} ${SOURCES})
+
+    # Link libraries
+    target_link_libraries(${target_name} PRIVATE ${linked_libraries})
+
+    # Add AddressSanitizer options if in Debug mode and ASAN is enabled
+    if(CMAKE_BUILD_TYPE MATCHES "Debug")
+        if (VD_OPTION_ENABLE_ASAN)
+            target_compile_options(${target_name} BEFORE PUBLIC "-fsanitize=address")
+        endif()
+    endif()
+
+    # Register the test
+    add_test(NAME ${target_name}_test COMMAND ${target_name})
+
+    # Set test properties to identify failures
+    set_property(
+        TEST ${target_name}_test
+        PROPERTY FAIL_REGULAR_EXPRESSION "^\[  FAILED  \]$")
+endfunction()
+
+
 add_subdirectory("lib")
 add_subdirectory("shdc")
 add_subdirectory("rhi")

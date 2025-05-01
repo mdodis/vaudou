@@ -70,7 +70,7 @@ void vd_instance_init(VD_Instance *instance, VD_InstanceInitInfo *info)
                 vd_str_chop_right_last_of(exec_path, '/'));
 
     instance->log.filepath = strdup(log_path.data);
-    instance->log.flags = VD_LOG_WRITE_STDOUT;
+    instance->log.flags = VD_LOG_WRITE_STDOUT | VD_LOG_WRITE_FILE;
     vd_fmt_printf("%{stru32}\n", log_path);
 
     VD_LOG_SET(&instance->log);

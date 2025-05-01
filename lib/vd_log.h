@@ -40,6 +40,7 @@
 typedef enum {
 	VD_LOG_WRITE_STDOUT = 1 << 0,
 	VD_LOG_MT           = 1 << 1,
+    VD_LOG_WRITE_FILE   = 1 << 2,
 } VD_LogFlags;
 
 typedef struct {
@@ -61,23 +62,29 @@ extern VD_Log *VD__Log;
 #define VD_LOG_SET(x) (VD__Log = (x))
 #define VD_LOG_RESET() \
 	do { \
-		FILE *f = fopen(VD_LOG_GET()->filepath, "w"); \
-		fflush(f); \
-		fclose(f); \
+        if (VD_LOG_GET()->flags & VD_LOG_WRITE_FILE)        \
+        {                                                   \
+            FILE *f = fopen(VD_LOG_GET()->filepath, "w");   \
+            fflush(f);                                      \
+            fclose(f);                                      \
+        }                                                   \
 	} while (0)
 
-#define VD_LOG_1(fmt, ...)                             \
-	do                                                 \
-	{                                                  \
-		FILE *f = fopen(VD_LOG_GET()->filepath, "a");  \
-		assert(f != 0);                                \
-		vd_fmt_fprintf(f, fmt, __VA_ARGS__);           \
-		if (VD_LOG_GET()->flags & VD_LOG_WRITE_STDOUT) \
-		{                                              \
-			vd_fmt_fprintf(stdout, fmt, __VA_ARGS__);  \
-		}                                              \
-		fflush(f);                                     \
-		fclose(f);  								   \
+#define VD_LOG_1(fmt, ...)                                  \
+	do                                                      \
+	{                                                       \
+        if (VD_LOG_GET()->flags & VD_LOG_WRITE_FILE)        \
+        {                                                   \
+            FILE *f = fopen(VD_LOG_GET()->filepath, "a");   \
+            assert(f != 0);                                 \
+            vd_fmt_fprintf(f, fmt, __VA_ARGS__);            \
+            fflush(f);                                      \
+            fclose(f);  								    \
+        }                                                   \
+		if (VD_LOG_GET()->flags & VD_LOG_WRITE_STDOUT)      \
+		{                                                   \
+			vd_fmt_fprintf(stdout, fmt, __VA_ARGS__);       \
+		}                                                   \
 	} while (0)
 
 #define VD_LOG_FMT(category, fmt, ...) VD_LOG_1("[" category "/LOG]: " fmt "\n", __VA_ARGS__)

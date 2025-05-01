@@ -28,6 +28,7 @@ typedef struct VD(RHI) VD(RHI);
 
 typedef enum {
     VD_(RH_RESULT_SUCCESS) = 0,
+    VD_(RH_RESULT_FAILURE) = -1,
 } VD(RHResult);
 
 typedef enum {

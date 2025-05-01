@@ -3,10 +3,15 @@
 #include "rhi_vulkan.h"
 #include "vd_log.h"
 #include "volk.h"
+#include "vk_mem_alloc.h"
 
 #include "tracy/TracyC.h"
 
 static VD_RHI_INIT_PROC(rhi_vulkan_init);
+static VD_RHI_CREATE_BUFFER_PROC(rhi_vulkan_create_buffer);
+static VD(RHResult) translate_result(VkResult result);
+static VkBufferUsageFlags translate_buffer_usage_flags(VD(RHBufferUsage) usage);
+static VmaMemoryUsage translate_memory_usage_flags(VD(RHMemoryUsage) usage);
 
 static const char *Validation_Layers[] = {
     "VK_LAYER_KHRONOS_validation",
@@ -33,6 +38,7 @@ typedef struct {
     VkPhysicalDevice                    physical_device;
     VkDevice                            device;
     VD_Allocator                        *frame_allocator;
+    VmaAllocator                        allocator;
 
     struct {
         u32                             queue_family_index;
@@ -62,6 +68,7 @@ void rhi_vulkan_populate(VD(RHI) *rhi)
 {
     rhi->c = &Vulkan_Context;
     rhi->initialize = rhi_vulkan_init;
+    rhi->create_buffer = rhi_vulkan_create_buffer;
 }
 
 static inline const char* vkresult_to_string(VkResult input_value);
@@ -514,9 +521,6 @@ static VD_RHI_INIT_PROC(rhi_vulkan_init)
 
     static const char *device_window_extensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#if VD_PLATFORM_MACOS
-        "VK_KHR_portability_subset"
-#endif
     };
 
     const char **create_logical_device_extensions = 0;
@@ -590,7 +594,116 @@ static VD_RHI_INIT_PROC(rhi_vulkan_init)
         0,
         &CTX()->presentation.queue);
 
+// ----INIT VMA-------------------------------------------------------------------------------------
+    {
+        VkResult result = vmaCreateAllocator(
+            & (VmaAllocatorCreateInfo)
+            {
+                .device         = CTX()->device,
+                .physicalDevice = CTX()->physical_device,
+                .instance       = CTX()->instance,
+                .flags          = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+                .pVulkanFunctions = & (VmaVulkanFunctions)
+                {
+                    .vkGetInstanceProcAddr                  = vkGetInstanceProcAddr,
+                    .vkGetDeviceProcAddr                    = vkGetDeviceProcAddr,
+                    .vkAllocateMemory                       = vkAllocateMemory,
+                    .vkBindBufferMemory                     = vkBindBufferMemory,
+                    .vkBindImageMemory                      = vkBindImageMemory,
+                    .vkCreateBuffer                         = vkCreateBuffer,
+                    .vkCreateImage                          = vkCreateImage,
+                    .vkDestroyBuffer                        = vkDestroyBuffer,
+                    .vkDestroyImage                         = vkDestroyImage,
+                    .vkFlushMappedMemoryRanges              = vkFlushMappedMemoryRanges,
+                    .vkFreeMemory                           = vkFreeMemory,
+                    .vkGetBufferMemoryRequirements          = vkGetBufferMemoryRequirements,
+                    .vkGetImageMemoryRequirements           = vkGetImageMemoryRequirements,
+                    .vkGetPhysicalDeviceMemoryProperties    = vkGetPhysicalDeviceMemoryProperties,
+                    .vkGetPhysicalDeviceProperties          = vkGetPhysicalDeviceProperties,
+                    .vkInvalidateMappedMemoryRanges         = vkInvalidateMappedMemoryRanges,
+                    .vkMapMemory                            = vkMapMemory,
+                    .vkUnmapMemory                          = vkUnmapMemory,
+                    .vkCmdCopyBuffer                        = vkCmdCopyBuffer,
+                },
+            },
+            &CTX()->allocator);
+        if (result != VK_SUCCESS) {
+            return RH_RESULT_FAILURE;
+        }
+    }
+
     return RH_RESULT_SUCCESS;
+}
+
+static VD_RHI_CREATE_BUFFER_PROC(rhi_vulkan_create_buffer)
+{
+    VkBuffer buffer;
+    VmaAllocation allocation;
+
+    VkResult result = vmaCreateBuffer(
+        CTX()->allocator,
+        & (VkBufferCreateInfo)
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .usage = translate_buffer_usage_flags(info->buffer_usage),
+            .size  = info->size,
+        },
+        & (VmaAllocationCreateInfo)
+        {
+            .usage = translate_memory_usage_flags(info->memory_usage),
+            .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        },
+        &buffer,
+        &allocation,
+        0);
+
+    if (result != VK_SUCCESS)
+    {
+        return translate_result(result);
+    }
+
+    *out_buffer = (RHBuffer)buffer;
+    *out_allocation = (RHAllocation)allocation;
+
+    return RH_RESULT_SUCCESS;
+}
+
+static VkBufferUsageFlags translate_buffer_usage_flags(VD(RHBufferUsage) usage)
+{
+    switch (usage) {
+        case VD_(RH_BUFFER_USAGE_TRANSFER_SRC_BIT):          return VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        case VD_(RH_BUFFER_USAGE_TRANSFER_DST_BIT):          return VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        case VD_(RH_BUFFER_USAGE_UNIFORM_TEXEL_BIT):         return VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_STORAGE_TEXEL_BIT):         return VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_UNIFORM_BUFFER_BIT):        return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_STORAGE_BUFFER_BIT):        return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_INDEX_BUFFER_BIT):          return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_VERTEX_BUFFER_BIT):         return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        case VD_(RH_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT): return VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        default: return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+}
+
+static VmaMemoryUsage translate_memory_usage_flags(VD(RHMemoryUsage) usage)
+{
+    switch (usage) {
+        case VD_(RH_MEMORY_USAGE_UNKNOWN):      return VMA_MEMORY_USAGE_UNKNOWN;
+        case VD_(RH_MEMORY_USAGE_GPU_ONLY):     return VMA_MEMORY_USAGE_GPU_ONLY;
+        case VD_(RH_MEMORY_USAGE_CPU_ONLY):     return VMA_MEMORY_USAGE_CPU_ONLY;
+        case VD_(RH_MEMORY_USAGE_CPU_TO_GPU):   return VMA_MEMORY_USAGE_CPU_TO_GPU;
+        case VD_(RH_MEMORY_USAGE_GPU_TO_CPU):   return VMA_MEMORY_USAGE_GPU_TO_CPU;
+        default: return VMA_MEMORY_USAGE_UNKNOWN;
+    }
+}
+
+static VD(RHResult) translate_result(VkResult result)
+{
+    switch (result) {
+        case VK_SUCCESS:
+            return RH_RESULT_SUCCESS;
+        default:
+            return RH_RESULT_FAILURE;
+    }
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
